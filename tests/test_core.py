@@ -112,7 +112,7 @@ def test_filequeue_noshuffle():
 def test_imgqueue():
     # Test the imgqueue is working
     file_queue = dl.FileQueue()
-    file_queue.load_epochs(files, max_epochs=math.inf)
+    file_queue.load_epochs(files)
 
     img_queue = dl.ImgQueue()
     img_queue.start_loaders(file_queue, num=3, img_dir=IMG_DIR)

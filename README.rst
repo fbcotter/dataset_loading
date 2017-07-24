@@ -48,7 +48,7 @@ or for a specific tag (e.g. 0.0.1), try::
 Download and pip install from Git::
 
     $ git clone https://github.com/fbcotter/dataset_loading
-    $ cd tf_ops
+    $ cd dataset_loading
     $ pip install -r requirements.txt
     $ pip install -e .
 

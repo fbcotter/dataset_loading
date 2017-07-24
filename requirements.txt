@@ -1,0 +1,4 @@
+tensorflow
+numpy
+pytest
+-r docs/requirements.txt

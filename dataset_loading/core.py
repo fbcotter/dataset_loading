@@ -206,7 +206,7 @@ class FileQueue(queue.Queue):
         else:
             return super(FileQueue, self).get(block=block, timeout=timeout)
 
-    def load_epochs(self, files, reshuffle=True, max_epochs=math.inf):
+    def load_epochs(self, files, reshuffle=True, max_epochs=float('inf')):
         """
         Starts a thread to load the file names into the file queue.
 
@@ -217,7 +217,7 @@ class FileQueue(queue.Queue):
             (filenames, labels)
         reshuffle : bool
             Whether to shuffle the list before adding it to the queue
-        max_epochs : int or math.inf
+        max_epochs : int or infinity
             Maximum number of epochs to allow before queue manager stops
             refilling the queue.
 

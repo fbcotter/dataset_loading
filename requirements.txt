@@ -1,4 +1,4 @@
-tensorflow
 numpy
 pytest
+Pillow
 -r docs/requirements.txt

@@ -19,20 +19,41 @@ parallel.
 Firstly, a :ref:`FileQueue-label` is used to store a list of file names (e.g.
 jpegs).  This is also the location of sequencing (there is an option to shuffle
 the entries in this queue when adding) and where we set the limits on the
-number of epochs processed (if we wish to). 
+number of epochs processed (if we wish to). For example, this would set up
+a file queue for 50 epochs:: 
+
+    import dataset_loading as dl
+    files = os.listdir(<path_to_images>)
+    files = [f for f in files if os.splitext(f)[1] == '.jpeg']
+    file_queue = dl.FileQueue()
+    file_queue.load_epochs(files, max_epochs=50)
 
 Next we create an :ref:`ImageQueue-label` to hold a set amount of images (not
-the entire batch, but enough to not hold up the main program). This class has
+the entire batch, but enough to keep the main program happily fed). This class has
 a method we call for starting image reader threads (again, you can choose how
-many of these you need to meet your main's demand).
+many of these you need to meet your main's demand). Following the above code,
+you could add an image queue like so::
+
+    img_queue = dl.ImgQueue()
+    img_queue.start_loaders(file_queue, num=3)
 
 In the main function, we call the ImageQueue's
 :py:meth:`ImgQueue.get_batch <dataset_loading.core.ImgQueue.get_batch>` 
-to get a batch of images from the ImageQueue. For synchronization with epochs,
-the ImageQueue has an attribute `last_batch` that will be set to true when an
-epoch's worth of images have been pulled from the ImageQueue. See the docstring
-of
-:py:class:`ImgQueue <dataset_loading.core.ImgQueue>` for more information.
+to get a batch of images from the ImageQueue::
+
+    # Wait for the image queue to fill up
+    sleep(5)
+    img_queue.get_batch(<batch_size>)
+
+For synchronization with epochs, the ImageQueue has an attribute `last_batch`
+that will be set to true when an epoch's worth of images have been pulled from
+the ImageQueue. See the docstring of
+:py:class:`ImgQueue <dataset_loading.core.ImgQueue>` for more information. 
+
+If you want to preprocess images before putting them into the image queue, you
+can provide a callable function to 
+:py:meth:`ImgQueue.start_loaders <dataset_loading.core.ImgQueue.start_loaders>` 
+to do this (see its docstring for more info).
 
 Installation
 ------------

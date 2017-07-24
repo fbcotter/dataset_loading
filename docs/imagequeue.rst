@@ -42,3 +42,10 @@ E.g.::
 
 For more info on the ImgQueue, see its 
 :py:class:`docstring <dataset_loading.core.ImgQueue>`.
+
+Note
+----
+By default the `get_batch` function does NOT block. I.e. if you call it, asking
+for 100 samples but only 50 are available, it will return with 50. If you do
+not want this, then you can set the parameter `block=True`. You may also
+consider setting the `timeout` parameter to a sensible value.

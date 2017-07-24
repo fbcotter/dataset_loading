@@ -294,20 +294,19 @@ class ImgLoader(threading.Thread):
             # this thread to exit.
             try:
                 item = self.fqueue.get_nowait()
-            except:
+                # Split the item into a filename and label
+                try:
+                    f, label = item
+                except:
+                    f = item
+                    label = None
+
+                img = self.load_image(os.path.join(self.base_dir, f))
+                self.iqueue.put((img, label))
+                self.fqueue.task_done()
+            except queue.Empty:
                 if not self.fqueue.filling:
                     return
-
-            # Split the item into a filename and label
-            try:
-                f, label = item
-            except:
-                f = item
-                label = None
-
-            img = self.load_image(os.path.join(self.base_dir, f))
-            self.iqueue.put((img, label))
-            self.fqueue.task_done()
 
 
 def convert_to_one_hot(vector, num_classes=None):

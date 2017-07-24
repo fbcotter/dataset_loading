@@ -17,7 +17,8 @@ create an ImageQueue. Standard would look like this::
     img_queue.get_batch(<batch_size>)
 
 Calling the start_loaders method spins up <num> threads to pull from the file
-queue and write to the image queue. See the :py:func:`ImgQueue.start_loaders` 
+queue and write to the image queue. See the 
+:py:meth:`ImgQueue.start_loaders <dataset_loading.core.ImgQueue.start_loaders>` 
 docstring for more info on the parameters you have here, but note that this is
 where you set:
 
@@ -39,3 +40,5 @@ E.g.::
                             img_dir=path_offset, transform=norm_image)
 
 
+For more info on the ImgQueue, see its 
+:py:class:`docstring <dataset_loading.core.ImgQueue>`.

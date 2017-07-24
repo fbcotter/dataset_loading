@@ -26,11 +26,13 @@ the entire batch, but enough to not hold up the main program). This class has
 a method we call for starting image reader threads (again, you can choose how
 many of these you need to meet your main's demand).
 
-In the main function, we call the ImageQueue's :py:meth:`ImageQueue.get_batch`
+In the main function, we call the ImageQueue's
+:py:meth:`ImgQueue.get_batch <dataset_loading.core.ImgQueue.get_batch>` 
 to get a batch of images from the ImageQueue. For synchronization with epochs,
 the ImageQueue has an attribute `last_batch` that will be set to true when an
-epoch's worth of images have been pulled from the ImageQueue. See the 
-docstring of :py:class:`ImageQueue` for more information.
+epoch's worth of images have been pulled from the ImageQueue. See the docstring
+of
+:py:class:`ImgQueue <dataset_loading.core.ImgQueue>` for more information.
 
 Installation
 ------------
@@ -57,7 +59,7 @@ pull requests.
 Further documentation
 ---------------------
 
-There is `more documentation <http://tf-ops.readthedocs.io>`_
+There is `more documentation <http://dataset-loading.readthedocs.io>`_
 available online and you can build your own copy via the Sphinx documentation
 system::
 

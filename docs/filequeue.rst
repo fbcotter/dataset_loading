@@ -28,3 +28,6 @@ and long enough to allow the FileQueue manager thread to detect the queue has
 emptied and give it time to fill up. Perhaps 10ms should work, i.e.::
 
     list_of_files = [file_queue.get(timeout=0.01) for _ in range(1000)]
+
+For more info on the FileQueue, see its 
+:py:class:`docstring <dataset_loading.core.FileQueue>`.

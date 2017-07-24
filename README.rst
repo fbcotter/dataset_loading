@@ -16,7 +16,7 @@ Usage
 For the bigger datasets, we need 2 queues and several threads to load images in
 parallel.
 
-Firstly, a :ref:`FileQueue-label` is used to store a list of file names (e.g.
+Firstly, a FileQueue_ is used to store a list of file names (e.g.
 jpegs).  This is also the location of sequencing (there is an option to shuffle
 the entries in this queue when adding) and where we set the limits on the
 number of epochs processed (if we wish to). For example, this would set up
@@ -28,7 +28,9 @@ a file queue for 50 epochs::
     file_queue = dl.FileQueue()
     file_queue.load_epochs(files, max_epochs=50)
 
-Next we create an :ref:`ImageQueue-label` to hold a set amount of images (not
+.. _FileQueue: http://dataset-loading.readthedocs.io/en/latest/filequeue.html#filequeue
+
+Next we create an ImageQueue_ to hold a set amount of images (not
 the entire batch, but enough to keep the main program happily fed). This class has
 a method we call for starting image reader threads (again, you can choose how
 many of these you need to meet your main's demand). Following the above code,
@@ -37,30 +39,32 @@ you could add an image queue like so::
     img_queue = dl.ImgQueue()
     img_queue.start_loaders(file_queue, num=3)
 
+.. _ImageQueue: http://dataset-loading.readthedocs.io/en/latest/imagequeue.html#imagequeue
+
 In the main function, we call the ImageQueue's
-:py:meth:`ImgQueue.get_batch <dataset_loading.core.ImgQueue.get_batch>` 
+`ImgQueue.get_batch`__ 
 to get a batch of images from the ImageQueue::
 
     # Wait for the image queue to fill up
     sleep(5)
     img_queue.get_batch(<batch_size>)
 
+__ http://dataset-loading.readthedocs.io/en/latest/functions.html#dataset_loading.core.ImgQueue.get_batch
+
 For synchronization with epochs, the ImageQueue has an attribute `last_batch`
 that will be set to true when an epoch's worth of images have been pulled from
-the ImageQueue. See the docstring of
-:py:class:`ImgQueue <dataset_loading.core.ImgQueue>` for more information. 
+the ImageQueue. 
 
-If you want to preprocess images before putting them into the image queue, you
-can provide a callable function to 
-:py:meth:`ImgQueue.start_loaders <dataset_loading.core.ImgQueue.start_loaders>` 
-to do this (see its docstring for more info).
+If you want to pre-process images before putting them into the image queue, you
+can provide a callable function to `ImgQueue.start_loaders` to do this (see its 
+docstring for more info).
 
 Installation
 ------------
 Direct install from github (useful if you use pip freeze). To get the master
 branch, try::
 
-    $ pip install -e git+https://github.com/fbcotter/dataset_laoding#egg=dataset_loading
+    $ pip install -e git+https://github.com/fbcotter/dataset_loading#egg=dataset_loading
 
 or for a specific tag (e.g. 0.0.1), try::
 
@@ -80,7 +84,7 @@ pull requests.
 Further documentation
 ---------------------
 
-There is `more documentation <http://dataset-loading.readthedocs.io>`_
+There is `more documentation`__
 available online and you can build your own copy via the Sphinx documentation
 system::
 
@@ -88,3 +92,5 @@ system::
 
 Compiled documentation may be found in ``build/docs/html/`` (index.html will be
 the homepage)
+
+__ http://dataset-loading.readthedocs.io

@@ -132,12 +132,15 @@ def get_mnist_queues(data_dir, val_size=2000, transform=None,
                      max_qsize=1000, num_threads=(2,2,2),
                      max_epochs=float('inf'), get_queues=(True, True, True),
                      _rand_data=False):
-    """ Get Image queues for CIFAR
+    """ Get Image queues for MNIST
 
-    CIFAR10/100 are both small datasets. This function loads them both into
-    memory and creates an :py:class:`~dataset_loading.core.ImgQueue` to
-    feed them through to the main function. Preprocessing can be done by
-    providing a callable to the transform parameter.
+    MNIST is a small dataset. This function loads it into memory and creates
+    several :py:class:`~dataset_loading.core.ImgQueue` to feed the training,
+    testing and validation data through to the main function.  Preprocessing can
+    be done by providing a callable to the transform parameter.  Note that by
+    default, the black and white MNIST images will be returned as a [28, 28, 1]
+    shape numpy array. You can of course modify this with the transform
+    function.
 
     Parameters
     ----------

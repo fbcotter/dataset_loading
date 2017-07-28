@@ -6,7 +6,9 @@ FileQueue
 Typically, you will set up a file queue to give to an Image Loader thread and
 will never need to touch it, but if you do wish to use it directly, there are
 some things to note. For these notes, it is useful to look at the typical
-usage::
+usage:
+
+.. code:: python
 
     import dataset_loading as dl
     files = [<some list of filenames or a list of tuples of (filenames, labels)]

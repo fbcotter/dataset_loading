@@ -13,6 +13,7 @@ Welcome to Dataset Loading's documentation!
    readme
    filequeue
    imagequeue
+   cifar
    functions
 
 

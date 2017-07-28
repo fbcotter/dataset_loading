@@ -96,7 +96,7 @@ def test_filequeue_noshuffle():
     # Test the shuffling is working
     file_queue = dl.FileQueue()
 
-    file_queue.load_epochs(files, max_epochs=1, reshuffle=False)
+    file_queue.load_epochs(files, max_epochs=1, shuffle=False)
     new_files = [file_queue.get(timeout=MAX_TIMEOUT)
                  for _ in range(file_queue.epoch_size)]
 
@@ -115,7 +115,7 @@ def test_imgqueue():
     file_queue.load_epochs(files)
 
     img_queue = dl.ImgQueue()
-    img_queue.start_loaders(file_queue, num=3, img_dir=IMG_DIR)
+    img_queue.start_loaders(file_queue, num_threads=3, img_dir=IMG_DIR)
     # Allow time to load in data
     sleep(1)
     img_queue.get_batch(100)
@@ -127,7 +127,7 @@ def test_imgqueue_epochreached():
     file_queue.load_epochs(files, max_epochs=1)
 
     img_queue = dl.ImgQueue()
-    img_queue.start_loaders(file_queue, num=3, img_dir=IMG_DIR)
+    img_queue.start_loaders(file_queue, num_threads=3, img_dir=IMG_DIR)
     img_queue.get_batch(batch_size=len(files), block=True)
     with pytest.raises(dl.FileQueueDepleted):
         img_queue.get_batch(1)
@@ -151,7 +151,7 @@ def test_imgqueue_lots():
     file_queue.load_epochs(files)
 
     img_queue = dl.ImgQueue()
-    img_queue.start_loaders(file_queue, num=3, img_dir=IMG_DIR)
+    img_queue.start_loaders(file_queue, num_threads=3, img_dir=IMG_DIR)
 
     img_queue.get_batch(1000, block=True)
     img_queue.get_batch(1000, block=True)
@@ -163,26 +163,26 @@ def test_lastbatch():
     file_queue.load_epochs(files, max_epochs=10)
 
     img_queue = dl.ImgQueue()
-    img_queue.start_loaders(file_queue, num=3, img_dir=IMG_DIR)
+    img_queue.start_loaders(file_queue, num_threads=3, img_dir=IMG_DIR)
 
     # Get an entire epoch first
-    data = img_queue.get_batch(len(files), block=True)
+    data, labels = img_queue.get_batch(len(files), block=True)
     assert img_queue.last_batch
 
     # Get batches of 10 images and test the flag works
     num_batches = np.ceil(len(files)/10).astype('int')
     for b in range(num_batches-1):
-        data = img_queue.get_batch(10, block=True)
+        data, labels = img_queue.get_batch(10, block=True)
         assert not img_queue.last_batch
-    data = img_queue.get_batch(10, block=True)
+    data, labels = img_queue.get_batch(10, block=True)
     assert img_queue.last_batch
 
     # Get batches of 13 images and test the flag works
     num_batches = np.ceil(len(files)/13).astype('int')
     for b in range(num_batches-1):
-        data = img_queue.get_batch(13, block=True)
+        data, labels = img_queue.get_batch(13, block=True)
         assert not img_queue.last_batch
-    data = img_queue.get_batch(13, block=True)
+    data, labels = img_queue.get_batch(13, block=True)
     assert img_queue.last_batch
 
 
@@ -196,9 +196,9 @@ def test_transform():
     def transform(x):
         return x-np.mean(x)
 
-    img_queue.start_loaders(file_queue, num=3, img_dir=IMG_DIR,
+    img_queue.start_loaders(file_queue, num_threads=3, img_dir=IMG_DIR,
                             transform=transform)
 
-    data = img_queue.get_batch(10, block=True)
-    for im, _ in data:
+    data, labels = img_queue.get_batch(10, block=True)
+    for im in data:
         assert abs(np.mean(im)) <= 0.0001

@@ -71,7 +71,7 @@ def get_cifar_queues(data_dir, cifar10=True, val_size=2000, transform=None,
     """ Get Image queues for CIFAR
 
     CIFAR10/100 are both small datasets. This function loads them both into
-    memory and creates an :py:class`~dataset_loading.core.ImgQueue` to
+    memory and creates an :py:class:`~dataset_loading.core.ImgQueue` to
     feed them through to the main function. Preprocessing can be done by
     providing a callable to the transform parameter.
 

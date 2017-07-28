@@ -81,7 +81,7 @@ the queues, you would run into all sorts of problems.
 The ImgQueue in this package has a `last_batch` property that indicates whether this
 epoch was the last one or not, providing an easy indication for the main program
 to move onto the validation stage. **This flag will get reset if you read from
-it**.
+it**. This allows you to do something like the following:
 
 .. code:: python
 

@@ -1,70 +1,134 @@
+# Much of the code to load the MNIST dataset from the zip files was taken from
+# the tensorflow source.
+
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
 import numpy as np
 import os
-import pickle
 
 # Package imports
 from dataset_loading import core
+import gzip
 
 
-def load_cifar_data(data_dir, cifar10=True, val_size=2000):
-    """Load cifar10 or cifar100 data
+def _read32(bytestream):
+    dt = np.dtype(np.uint32).newbyteorder('>')
+    return np.frombuffer(bytestream.read(4), dtype=dt)[0]
+
+
+def extract_images(f):
+    """Extract the images into a 4D uint8 numpy array [index, y, x, depth].
+
+    Parameters
+    ----------
+    f: file object
+        file that can be passed into a gzip reader.
+
+    Returns
+    -------
+    data: A 4D uint8 numpy array [index, y, x, depth].
+
+    Raises
+    ------
+    ValueError: If the bytestream does not start with 2051.
+    """
+    with gzip.GzipFile(fileobj=f) as bytestream:
+        magic = _read32(bytestream)
+        if magic != 2051:
+            raise ValueError('Invalid magic number %d in MNIST image file: %s' %
+                             (magic, f.name))
+        num_images = _read32(bytestream)
+        rows = _read32(bytestream)
+        cols = _read32(bytestream)
+        buf = bytestream.read(rows * cols * num_images)
+        data = np.frombuffer(buf, dtype=np.uint8)
+        data = data.reshape(num_images, rows, cols, 1)
+        return data
+
+
+def extract_labels(f, one_hot=False, num_classes=10):
+    """Extract the labels into a 1D uint8 numpy array [index].
+
+    Parameters
+    ----------
+    f: file object
+        A file object that can be passed into a gzip reader.
+    one_hot: bool
+        Does one hot encoding for the result.
+    num_classes: int
+        Number of classes for the one hot encoding.
+
+    Returns
+    -------
+    labels: a 1D uint8 numpy array.
+
+    Raises
+    ------
+    ValueError: If the bystream doesn't start with 2049.
+    """
+    with gzip.GzipFile(fileobj=f) as bytestream:
+        magic = _read32(bytestream)
+        if magic != 2049:
+            raise ValueError('Invalid magic number %d in MNIST label file: %s' %
+                             (magic, f.name))
+        num_items = _read32(bytestream)
+        buf = bytestream.read(num_items)
+        labels = np.frombuffer(buf, dtype=np.uint8)
+        if one_hot:
+            labels = core.convert_to_one_hot(labels, num_classes=num_classes)
+        return labels
+
+
+def load_mnist_data(data_dir, val_size=2000):
+    """Load mnist data
 
     Parameters
     ----------
     data_dir : str
-        Path to the folder with the cifar files in them. These should be the
-        python files as downloaded from `cs.toronto`__
+        Path to the folder with the mnist files in them. These should
+        be the gzip files downloaded from `yann.lecun.com`__
 
-        __ https://www.cs.toronto.edu/~kriz/cifar.html
-    cifar10 : bool
-        True if cifar10, false if cifar100
+        __ http://yann.lecun.com/exdb/mnist/
     val_size : int
         Size of the validation set.
     """
-    if cifar10:
-        train_files = ['data_batch_'+str(x) for x in range(1,6)]
-        train_files = [os.path.join(data_dir, f) for f in train_files]
-        test_files = ['test_batch']
-        test_files = [os.path.join(data_dir, f) for f in test_files]
-        num_classes = 10
-        label_func = lambda x: np.array(x['labels'], dtype='int32')
-    else:
-        train_files = ['train']
-        train_files = [os.path.join(data_dir, f) for f in train_files]
-        test_files = ['test']
-        test_files = [os.path.join(data_dir, f) for f in test_files]
-        num_classes = 100
-        label_func = lambda x: np.array(x['fine_labels'], dtype='int32')
+    if not 0 <= val_size <= 60000:
+        raise ValueError(
+            'Validation size should be between 0 and 60000. Received: {}.'
+            .format(60000, val_size))
 
-    def load_files(filenames):
-        data = np.array([])
-        labels = np.array([])
-        for name in filenames:
-            with open(name, 'rb') as f:
-                mydict = pickle.load(f, encoding='latin1')
-            newlabels = label_func(mydict)
-            data = np.vstack([data, mydict['data']]) if data.size else mydict['data']  # noqa
-            labels = np.hstack([labels, newlabels]) if labels.size else newlabels      # noqa
-        data = np.reshape(data, [-1, 3, 32, 32], order='C')
-        data = np.transpose(data, [0, 2, 3, 1])
-        labels = core.convert_to_one_hot(labels, num_classes=num_classes)
-        return data, labels
+    TRAIN_IMAGES = 'train-images-idx3-ubyte.gz'
+    TRAIN_LABELS = 'train-labels-idx1-ubyte.gz'
+    TEST_IMAGES = 't10k-images-idx3-ubyte.gz'
+    TEST_LABELS = 't10k-labels-idx1-ubyte.gz'
 
-    train_data, train_labels = load_files(train_files)
-    test_data, test_labels = load_files(test_files)
-    train_data, val_data = np.split(train_data,
-                                    [train_data.shape[0]-val_size])
-    train_labels, val_labels = np.split(train_labels,
-                                        [train_labels.shape[0]-val_size])
+    local_file = os.path.join(data_dir, TRAIN_IMAGES)
+    with open(local_file, 'rb') as f:
+        train_data = extract_images(f)
+
+    local_file = os.path.join(data_dir, TRAIN_LABELS)
+    with open(local_file, 'rb') as f:
+        train_labels = extract_labels(f, one_hot=True)
+
+    local_file = os.path.join(data_dir, TEST_IMAGES)
+    with open(local_file, 'rb') as f:
+        test_data = extract_images(f)
+
+    local_file = os.path.join(data_dir, TEST_LABELS)
+    with open(local_file, 'rb') as f:
+        test_labels = extract_labels(f, one_hot=True)
+
+    val_data = train_data[:val_size]
+    val_labels = train_labels[:val_size]
+    train_data = train_data[val_size:]
+    train_labels = train_labels[val_size:]
 
     return train_data, train_labels, test_data, test_labels, val_data, val_labels   # noqa
 
 
-def get_cifar_queues(data_dir, cifar10=True, val_size=2000, transform=None,
+def get_mnist_queues(data_dir, val_size=2000, transform=None,
                      max_qsize=1000, num_threads=(2,2,2),
                      max_epochs=float('inf'), get_queues=(True, True, True),
                      _rand_data=False):
@@ -81,8 +145,6 @@ def get_cifar_queues(data_dir, cifar10=True, val_size=2000, transform=None,
         Path to the folder containing the cifar data. For cifar10, this should
         be the path to the folder called 'cifar-10-batches-py'. For
         cifar100, this should be the path to the folder 'cifar-100-python'.
-    cifar10 : bool
-        True if we are using cifar10.
     val_size : int
         How big you want the validation set to be. Will be taken from the end of
         the train data.
@@ -157,14 +219,14 @@ def get_cifar_queues(data_dir, cifar10=True, val_size=2000, transform=None,
     # Load the data into memory
     if not _rand_data:
         tr_data, tr_labels, te_data, te_labels, val_data, val_labels = \
-            load_cifar_data(data_dir, cifar10, val_size)
+            load_mnist_data(data_dir, val_size)
     else:
         # Randomly generate some image like data
-        tr_data = np.random.randint(255, size=(10000-val_size, 32, 32, 3))
+        tr_data = np.random.randint(255, size=(10000-val_size, 28, 28))
         tr_labels = np.random.randint(10, size=(10000-val_size,))
-        te_data = np.random.randint(255, size=(1000, 32, 32, 3))
+        te_data = np.random.randint(255, size=(1000, 28, 28))
         te_labels = np.random.randint(10, size=(1000,))
-        val_data = np.random.randint(255, size=(val_size, 32, 32, 3))
+        val_data = np.random.randint(255, size=(val_size, 28, 28))
         val_labels = np.random.randint(10, size=(val_size,))
         # convert to one hot
         tr_labels = core.convert_to_one_hot(tr_labels)
@@ -177,17 +239,17 @@ def get_cifar_queues(data_dir, cifar10=True, val_size=2000, transform=None,
     val_queue = None
     if get_queues[0]:
         train_queue = core.ImgQueue(maxsize=train_qsize,
-                                    name='CIFAR Train Queue')
+                                    name='MNIST Train Queue')
         train_queue.take_dataset(tr_data, tr_labels, True, train_threads,
                                  train_xfm, max_epochs)
     if get_queues[1]:
         test_queue = core.ImgQueue(maxsize=test_qsize,
-                                   name='CIFAR Test Queue')
+                                   name='MNIST Test Queue')
         test_queue.take_dataset(te_data, te_labels, True, test_threads,
                                 test_xfm, max_epochs)
     if get_queues[2] and val_data.size > 0:
         val_queue = core.ImgQueue(maxsize=val_qsize,
-                                  name='CIFAR Val Queue')
+                                  name='MNIST Val Queue')
         val_queue.take_dataset(val_data, val_labels, True, val_threads,
                                val_xfm, max_epochs)
 

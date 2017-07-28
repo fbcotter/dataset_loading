@@ -3,22 +3,9 @@ from __future__ import division
 from __future__ import print_function
 
 import numpy as np
-import queue
-import threading
-from random import shuffle
-from PIL import Image
-import os
 from time import sleep
-import math
-import dataset_loading as dl
-from dataset_loading import core, cifar, FileQueueDepleted
+from dataset_loading import cifar, FileQueueDepleted
 import pytest
-
-
-MAX_TIMEOUT = 0.01 # 50 ms
-TEST_BASE = os.path.dirname(os.path.realpath(__file__))
-PACKAGE_BASE = os.path.join(os.path.dirname(os.path.realpath(__file__)), '..')
-IMG_DIR = os.path.join(TEST_BASE, 'samples')
 
 
 def test_getqueue():

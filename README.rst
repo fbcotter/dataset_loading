@@ -31,9 +31,11 @@ fit into these functions, or if you have a new dataset, have a look at `General
 Usage`_, as it was designed to make queueing for any dataset type as easy as
 possible.
 
+- `MNIST usage instructions`__
 - `CIFAR10/CIFAR100 usage instructions`__
- 
-__ http://dataset-loading.readthedocs.io/en/latest/cifar.html#cifar
+
+__ http://dataset-loading.readthedocs.io/en/latest/mnist.html 
+__ http://dataset-loading.readthedocs.io/en/latest/cifar.html 
 
 General Usage
 -------------

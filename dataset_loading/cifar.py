@@ -5,9 +5,14 @@ from __future__ import print_function
 import numpy as np
 import os
 import pickle
+import warnings
 
 # Package imports
 from dataset_loading import core
+
+# Cifar folder names
+CIFAR10_FOLDER = 'cifar-10-batches-py'
+CIFAR100_FOLDER = 'cifar-100-python'
 
 
 def load_cifar_data(data_dir, cifar10=True, val_size=2000):
@@ -26,6 +31,10 @@ def load_cifar_data(data_dir, cifar10=True, val_size=2000):
         Size of the validation set.
     """
     if cifar10:
+        if CIFAR10_FOLDER in os.listdir(data_dir) and \
+           'data_batch_1' not in os.listdir(data_dir):
+            # move the data directory down one
+            data_dir = os.path.join(data_dir, CIFAR10_FOLDER)
         train_files = ['data_batch_'+str(x) for x in range(1,6)]
         train_files = [os.path.join(data_dir, f) for f in train_files]
         test_files = ['test_batch']
@@ -33,6 +42,10 @@ def load_cifar_data(data_dir, cifar10=True, val_size=2000):
         num_classes = 10
         label_func = lambda x: np.array(x['labels'], dtype='int32')
     else:
+        if CIFAR100_FOLDER in os.listdir(data_dir) and \
+           'train' not in os.listdir(data_dir):
+            # move the data directory down one
+            data_dir = os.path.join(data_dir, CIFAR100_FOLDER)
         train_files = ['train']
         train_files = [os.path.join(data_dir, f) for f in train_files]
         test_files = ['test']
@@ -65,7 +78,7 @@ def load_cifar_data(data_dir, cifar10=True, val_size=2000):
 
 
 def get_cifar_queues(data_dir, cifar10=True, val_size=2000, transform=None,
-                     max_qsize=1000, num_threads=(2,2,2),
+                     maxsize=1000, num_threads=(2,2,2),
                      max_epochs=float('inf'), get_queues=(True, True, True),
                      _rand_data=False):
     """ Get Image queues for CIFAR
@@ -96,7 +109,7 @@ def get_cifar_queues(data_dir, cifar10=True, val_size=2000, transform=None,
         of callables, needs to be of length 3 and should be in the order
         (train_transform, test_transform, val_transform). Setting it to None
         means no processing will be done before putting into the image queue.
-    max_qsize : int or tuple of 3 ints
+    maxsize : int or tuple of 3 ints
         How big the image queues will be. Increase this if your main program is
         chewing through the data quickly, but increasing it will also mean more
         memory is taken up. If tuple of ints, needs to be length 3 and of the
@@ -141,13 +154,13 @@ def get_cifar_queues(data_dir, cifar10=True, val_size=2000, transform=None,
             test_xfm = transform
             val_xfm = transform
 
-    if type(max_qsize) is tuple or type(max_qsize) is list:
-        assert len(max_qsize) == 3
-        train_qsize, test_qsize, val_qsize = max_qsize
+    if type(maxsize) is tuple or type(maxsize) is list:
+        assert len(maxsize) == 3
+        train_qsize, test_qsize, val_qsize = maxsize
     else:
-        train_qsize = max_qsize
-        test_qsize = max_qsize
-        val_qsize = max_qsize
+        train_qsize = maxsize
+        test_qsize = maxsize
+        val_qsize = maxsize
 
     if type(num_threads) is tuple or type(num_threads) is list:
         assert len(num_threads) == 3
@@ -156,6 +169,15 @@ def get_cifar_queues(data_dir, cifar10=True, val_size=2000, transform=None,
         train_threads = num_threads
         test_threads = num_threads
         val_threads = num_threads
+
+    # Check the validation size parameter
+    if not get_queues[2]:
+        if val_size > 0:
+            warnings.warn(
+                'Validation size was non-zero but the validation ' +
+                'queue was not requested. Overriding validation size ' +
+                'parameter and not splitting the train set.')
+        val_size = 0
 
     # Load the data into memory
     if not _rand_data:
@@ -187,11 +209,11 @@ def get_cifar_queues(data_dir, cifar10=True, val_size=2000, transform=None,
         test_queue = core.ImgQueue(maxsize=test_qsize,
                                    name='CIFAR Test Queue')
         test_queue.take_dataset(te_data, te_labels, True, test_threads,
-                                test_xfm, max_epochs)
+                                test_xfm)
     if get_queues[2] and val_data.size > 0:
         val_queue = core.ImgQueue(maxsize=val_qsize,
                                   name='CIFAR Val Queue')
         val_queue.take_dataset(val_data, val_labels, True, val_threads,
-                               val_xfm, max_epochs)
+                               val_xfm)
 
     return train_queue, test_queue, val_queue

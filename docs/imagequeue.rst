@@ -53,3 +53,20 @@ By default the `get_batch` function does NOT block. I.e. if you call it, asking
 for 100 samples but only 50 are available, it will return with 50. If you do
 not want this, then you can set the parameter `block=True`. You may also
 consider setting the `timeout` parameter to a sensible value.
+
+.. _ImageQueue-properties-label:
+
+Properties
+----------
+Here are some useful properties of the ImgQueue class that may help you in
+designing your program:
+
+- last_batch : True if the previously read batch was the last in the epoch.
+  Reading this value resets it to false.
+- epoch_size : The number of images in the epoch. Interpreted from the File
+  Queue. Cannot always determine this.
+- read_count : How many images have been read in the current epoch
+- image_shape : Inspects the queue and gets the shape of the images in it.
+  Useful to check what the output shape from any preprocessing steps done
+  beforehand were.
+- label_shape : Inspects the queue and gets the shape of the labels in it.

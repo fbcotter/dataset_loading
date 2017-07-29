@@ -73,8 +73,8 @@ class ImgQueue(queue.Queue):
     """
     def __init__(self, maxsize=1000, name=''):
         queue.Queue.__init__(self, maxsize=maxsize)
-        self.epoch_size = None
-        self.read_count = 0
+        self._epoch_size = None
+        self._read_count = 0
         self.loaders_started = False
         self._last_batch = False
         self.in_memory = False
@@ -97,7 +97,7 @@ class ImgQueue(queue.Queue):
         """ Check whether the previously read batch was the last batch in the
         epoch.
 
-        Reading this value will set it to False. This allows you to do something
+        **Reading this value will set it to False**. This allows you to do something
         like this::
 
             while True:
@@ -110,6 +110,55 @@ class ImgQueue(queue.Queue):
         if test:
             self._last_batch = False
         return test
+
+    @property
+    def epoch_size(self):
+        """ The epoch size (as interpreted from the File Queue)
+        """
+        return self._epoch_size
+
+    @property
+    def read_count(self):
+        """ Returns how many images have been read in the current epoch.
+        """
+        return self._read_count
+
+
+    @property
+    def img_shape(self):
+        """ Return what the image size is of the images in the queue
+
+        This may be useful to check the output shape after any preprocessing has
+        been done.
+
+        Returns
+        -------
+        img_size : list of ints or None
+           Returns the shape of the images in the queue or None if it could not
+           determine what they were.
+        """
+        try:
+            return self.queue[0][0].shape
+        except:
+            return None
+
+    @property
+    def label_shape(self):
+        """ Return what the label shape is of the labels in the queue
+
+        This may be useful to check the output shape after any preprocessing has
+        been done.
+
+        Returns
+        -------
+        label_shape : list of ints or None
+           Returns the shape of the images in the queue or None if it could not
+           determine what they were.
+        """
+        try:
+            return self.queue[0][1].shape
+        except:
+            return None
 
     def take_dataset(self, data, labels=None, shuffle=True, num_threads=1,
                      transform=None, max_epochs=float('inf')):
@@ -160,7 +209,7 @@ class ImgQueue(queue.Queue):
         AssertionError if data and labels don't match up in size.
         """
         assert data.shape[0] == labels.shape[0]
-        self.epoch_size = data.shape[0]
+        self._epoch_size = data.shape[0]
         self.data = data
         self.labels = labels
         self.transform = transform
@@ -168,7 +217,7 @@ class ImgQueue(queue.Queue):
         # Create a file queue. This will only contain indices into the numpy
         # arrays data and labels.
         self.file_queue = FileQueue()
-        files = list(range(self.epoch_size))
+        files = list(range(self._epoch_size))
         self.file_queue.load_epochs(files, shuffle=shuffle,
                                     max_epochs=max_epochs)
 
@@ -249,7 +298,7 @@ class ImgQueue(queue.Queue):
                 "which loaded the images into memory. You cannot start " +
                 "threads to load from a file queue afterwards.")
         self.file_queue = file_queue
-        self.epoch_size = file_queue.epoch_size
+        self._epoch_size = file_queue.epoch_size
         loaders = [
             ImgLoader('Loader {}'.format(i+1), file_queue, self,
                       img_dir=img_dir, img_size=img_size, transform=transform)
@@ -308,7 +357,7 @@ class ImgQueue(queue.Queue):
         # Determine some limits on how many images to grab.
         rem = batch_size
         if self.epoch_size is not None:
-            rem = self.epoch_size - self.read_count
+            rem = self.epoch_size - self._read_count
 
         # Pull some samples from the queue - don't block and if we hit an
         # empty error, just keep going (don't want to block the main loop)
@@ -336,12 +385,12 @@ class ImgQueue(queue.Queue):
                 return None, None
 
         if self.epoch_size is not None:
-            last_batch = (len(data) + self.read_count) >= self.epoch_size
+            last_batch = (len(data) + self._read_count) >= self.epoch_size
             if last_batch:
-                self.read_count = len(data) + self.read_count - self.epoch_size
+                self._read_count = len(data) + self._read_count - self.epoch_size
                 self._last_batch = True
             else:
-                self.read_count += len(data)
+                self._read_count += len(data)
                 self._last_batch = False
 
         # Unzip the data and labels before returning

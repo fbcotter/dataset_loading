@@ -10,10 +10,6 @@ load it in:
 
 The best way to understand this function is to see how it is used.
 
-.. def get_cifar_queues(data_dir, cifar10=True, val_size=2000, transform=None,
-..                   max_qsize=1000, num_threads=(2,2,2),
-..                     max_epochs=float('inf'), _rand_data=False):
-
 .. code:: python
 
     from dataset_loading import cifar
@@ -139,3 +135,10 @@ you can do this by using the `get_queues` parameter. E.g.:
     train_queue, test_queue, val_queue = cifar.get_cifar_queues(
         '/path/to/cifar/data', cifar10=True, get_queues=(True, False, True))
     assert test_queue is None
+
+Miscellanea
+-----------
+If you plan on only using the Dataset Specific functions, you should still be
+aware of some of the useful properties of the ImgQueue's received from the
+loading function. See :ref:`ImageQueue-properties-label` for a description of
+these.

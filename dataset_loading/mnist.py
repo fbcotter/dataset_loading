@@ -129,7 +129,7 @@ def load_mnist_data(data_dir, val_size=2000):
 
 
 def get_mnist_queues(data_dir, val_size=2000, transform=None,
-                     max_qsize=1000, num_threads=(2,2,2),
+                     maxsize=1000, num_threads=(2,2,2),
                      max_epochs=float('inf'), get_queues=(True, True, True),
                      _rand_data=False):
     """ Get Image queues for MNIST
@@ -158,7 +158,7 @@ def get_mnist_queues(data_dir, val_size=2000, transform=None,
         of callables, needs to be of length 3 and should be in the order
         (train_transform, test_transform, val_transform). Setting it to None
         means no processing will be done before putting into the image queue.
-    max_qsize : int or tuple of 3 ints
+    maxsize : int or tuple of 3 ints
         How big the image queues will be. Increase this if your main program is
         chewing through the data quickly, but increasing it will also mean more
         memory is taken up. If tuple of ints, needs to be length 3 and of the
@@ -203,13 +203,13 @@ def get_mnist_queues(data_dir, val_size=2000, transform=None,
             test_xfm = transform
             val_xfm = transform
 
-    if type(max_qsize) is tuple or type(max_qsize) is list:
-        assert len(max_qsize) == 3
-        train_qsize, test_qsize, val_qsize = max_qsize
+    if type(maxsize) is tuple or type(maxsize) is list:
+        assert len(maxsize) == 3
+        train_qsize, test_qsize, val_qsize = maxsize
     else:
-        train_qsize = max_qsize
-        test_qsize = max_qsize
-        val_qsize = max_qsize
+        train_qsize = maxsize
+        test_qsize = maxsize
+        val_qsize = maxsize
 
     if type(num_threads) is tuple or type(num_threads) is list:
         assert len(num_threads) == 3
@@ -249,11 +249,11 @@ def get_mnist_queues(data_dir, val_size=2000, transform=None,
         test_queue = core.ImgQueue(maxsize=test_qsize,
                                    name='MNIST Test Queue')
         test_queue.take_dataset(te_data, te_labels, True, test_threads,
-                                test_xfm, max_epochs)
+                                test_xfm)
     if get_queues[2] and val_data.size > 0:
         val_queue = core.ImgQueue(maxsize=val_qsize,
                                   name='MNIST Val Queue')
         val_queue.take_dataset(val_data, val_labels, True, val_threads,
-                               val_xfm, max_epochs)
+                               val_xfm)
 
     return train_queue, test_queue, val_queue

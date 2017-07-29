@@ -6,6 +6,7 @@ import numpy as np
 import os
 import pickle
 import warnings
+import time
 
 # Package imports
 from dataset_loading import core
@@ -216,4 +217,6 @@ def get_cifar_queues(data_dir, cifar10=True, val_size=2000, transform=None,
         val_queue.take_dataset(val_data, val_labels, True, val_threads,
                                val_xfm)
 
+    # allow for the filling of the queues with some samples
+    time.sleep(0.5)
     return train_queue, test_queue, val_queue

@@ -69,7 +69,7 @@ def test_lastbatch():
     train_queue, test_queue, val_queue = cifar.get_cifar_queues(
         '', _rand_data=True)
     sleep(1)
-    train_queue.read_count = train_queue.epoch_size - 200
+    train_queue._read_count = train_queue.epoch_size - 200
     data, labels = train_queue.get_batch(100)
     assert not train_queue.last_batch
     data, labels = train_queue.get_batch(100)
@@ -80,14 +80,14 @@ def test_lastbatch_reset():
     train_queue, test_queue, val_queue = cifar.get_cifar_queues(
         '', _rand_data=True)
     sleep(1)
-    train_queue.read_count = train_queue.epoch_size - 200
+    train_queue._read_count = train_queue.epoch_size - 200
 
     for i in range(2):
         while not train_queue.last_batch:
             data, labels = train_queue.get_batch(100)
         if i == 0:
             old_data = data
-        train_queue.read_count = train_queue.epoch_size - 100
+        train_queue._read_count = train_queue.epoch_size - 100
 
     # test that the last_batch flag was reset properly so that the data should
     # be different now

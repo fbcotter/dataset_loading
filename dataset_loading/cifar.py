@@ -186,12 +186,12 @@ def get_cifar_queues(data_dir, cifar10=True, val_size=2000, transform=None,
             load_cifar_data(data_dir, cifar10, val_size)
     else:
         # Randomly generate some image like data
-        tr_data = np.random.randint(255, size=(10000-val_size, 32, 32, 3))
-        tr_labels = np.random.randint(10, size=(10000-val_size,))
+        tr_data = np.random.randint(255, size=(10000, 32, 32, 3))
+        tr_labels = np.random.randint(10, size=(10000,))
         te_data = np.random.randint(255, size=(1000, 32, 32, 3))
         te_labels = np.random.randint(10, size=(1000,))
-        val_data = np.random.randint(255, size=(val_size, 32, 32, 3))
-        val_labels = np.random.randint(10, size=(val_size,))
+        val_data = np.random.randint(255, size=(1000, 32, 32, 3))
+        val_labels = np.random.randint(10, size=(1000,))
         # convert to one hot
         tr_labels = core.convert_to_one_hot(tr_labels)
         te_labels = core.convert_to_one_hot(te_labels)

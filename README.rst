@@ -12,6 +12,8 @@ difficult to use. This package does essentially the same thing as what
 tensorflow does, but using python's threading, multiprocessing and queue
 packages. 
 
+
+
 Threads vs Processes
 --------------------
 Initially this package would only use Python's threading package to parallelize
@@ -122,6 +124,25 @@ the ImageQueue.
     if last_batch:
         # Print summary info...
         
+You can monitor the queue size and fetch times for the ImgQueue too (to check
+whether you need to tweak some settings). This works by printing out info to
+a tensorboard summary file (currently only supported way of doing it). 
+All you need to do is create a `tf.summary.FileWriter` (you can use the same one
+the rest of your main program is using), and call the ImgQueue.add_logging_
+method. This will add the data as a to your tensorboard file.
+
+.. code:: python
+    
+    img_queue = dl.ImgQueue()
+    def preprocess(x):
+        x = x.astype(np.float32)
+        x = x - np.mean(x)
+        x = x/max(1, np.std(x))
+        return x
+    img_queue.start_loaders(file_queue, num_threads=3, transform=preprocess)
+    file_writer = tf.summary.FileWriter('./log', tf.get_default_graph())
+    # Write period is the sample period in numbers of batches for dumping data
+    img_queue.add_logging(file_writer, write_period=10)
 
 Small Datasets
 ~~~~~~~~~~~~~~
@@ -207,3 +228,4 @@ __ http://dataset-loading.readthedocs.io
 .. _ImgQueue.get_batch: http://dataset-loading.readthedocs.io/en/latest/functions.html#dataset_loading.core.ImgQueue.get_batch
 .. _ImgQueue.start_loaders: http://dataset-loading.readthedocs.io/en/latest/functions.html#dataset_loading.core.ImgQueue.start_loaders
 .. _ImgQueue.take_dataset: http://dataset-loading.readthedocs.io/en/latest/functions.html#dataset_loading.core.ImgQueue.take_dataset
+.. _ImgQueue.add_logging: http://dataset-loading.readthedocs.io/en/latest/functions.html#dataset_loading.core.ImgQueue.add_logging

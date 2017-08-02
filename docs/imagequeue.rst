@@ -54,6 +54,22 @@ for 100 samples but only 50 are available, it will return with 50. If you do
 not want this, then you can set the parameter `block=True`. You may also
 consider setting the `timeout` parameter to a sensible value.
 
+.. _ImageQueue-monitoring-label:
+
+Queue Monitoring
+----------------
+You can take advantage of tensorflow's tensorboard and plot out some queue
+statistics too. The dataset_loading package is meant to be able to work without
+tensorflow, so attempting these methods may throw warnings and not work. Logging
+is automatically done when calls to the `get_batch` method are made.
+
+.. code:: python
+    
+    img_queue.start_loaders(file_queue, num_threads=3, transform=preprocess)
+    file_writer = tf.summary.FileWriter('./log', tf.get_default_graph())
+    # Write period is the sample period in numbers of batches for dumping data
+    img_queue.add_logging(file_writer, write_period=10)
+
 .. _ImageQueue-properties-label:
 
 Properties

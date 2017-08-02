@@ -136,6 +136,10 @@ you can do this by using the `get_queues` parameter. E.g.:
         '/path/to/cifar/data', cifar10=True, get_queues=(True, False, True))
     assert test_queue is None
 
+Queue Monitoring
+----------------
+See the :ref:`ImageQueue-monitoring-label` section in the ImgQueue help.
+
 Miscellanea
 -----------
 If you plan on only using the Dataset Specific functions, you should still be

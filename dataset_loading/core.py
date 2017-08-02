@@ -79,6 +79,7 @@ class ImgQueue(queue.Queue):
         self._last_batch = False
         self.in_memory = False
         self.name = name
+        self.logging_on = False
 
     def __repr__(self):
         def bool2str(x):
@@ -97,8 +98,8 @@ class ImgQueue(queue.Queue):
         """ Check whether the previously read batch was the last batch in the
         epoch.
 
-        **Reading this value will set it to False**. This allows you to do something
-        like this::
+        **Reading this value will set it to False**. This allows you to do
+        something like this::
 
             while True:
                 while not train_queue.last_batch:
@@ -122,7 +123,6 @@ class ImgQueue(queue.Queue):
         """ Returns how many images have been read in the current epoch.
         """
         return self._read_count
-
 
     @property
     def img_shape(self):
@@ -227,6 +227,37 @@ class ImgQueue(queue.Queue):
                 kwargs={'idx': i+1}, daemon=True)
             thread.start()
         self.loaders_started = True
+
+    def add_logging(self, writer, write_period=10):
+        """ Adds ability to monitor queue sizes and fetch times.
+
+        Will try to import tensorflow and throw a warnings.warn if it couldn't.
+
+        Parameters
+        ----------
+        file_writer : tensorflow FileWriter object
+            Uses this object to write out summaries.
+        write_period : int
+            After how many calls to get_batch should we write to the logger.
+        """
+        try:
+            from dataset_loading.tensorboard_logging import Logger
+        except ImportError:
+            warnings.warn('Sorry, I couldnt import the necessary modules')
+            return
+        self.logger = Logger(writer=writer)
+        self.write_period = write_period
+        self.call_count = 0
+        self.logging_on = True
+        self.logger_info = {
+            'call_count': 0,
+            'av_qsize': 0,
+            'av_fetch_time': 0,
+            'epoch_idx': 0,
+            'epoch_size': 0,
+            'epoch_qsize': np.zeros((10000,)),
+            'epoch_fetch_time': np.zeros((10000,))
+        }
 
     def _mini_loaders(self, idx):
         """ Queue manager for when we have a dataset provided
@@ -362,13 +393,25 @@ class ImgQueue(queue.Queue):
         # Pull some samples from the queue - don't block and if we hit an
         # empty error, just keep going (don't want to block the main loop)
         nsamples = min(rem, batch_size)
+        start = time.time()
         if block:
-            data = [self.get(block=True, timeout=timeout)
-                    for _ in range(nsamples)]
+            try:
+                data = [self.get(block=True, timeout=timeout)
+                        for _ in range(nsamples)]
+            except queue.Empty:
+                if self.file_queue.started and not self.file_queue.filling and \
+                   self.file_queue.qsize() == 0:
+                    raise FileQueueDepleted('End of Training samples reached')
+                else:
+                    raise ValueError(
+                        'Queue Empty Exception but File Queue is still' +
+                        'active. Maybe the image loaders are under heavy load?')
+
         else:
             data = [catch_empty(lambda: self.get(block=block))
                     for _ in range(nsamples)]
             data = [x for x in data if type(x) is not queue.Empty]
+        end = time.time()
 
         if len(data) == 0:
             if not self.file_queue.started:
@@ -387,11 +430,15 @@ class ImgQueue(queue.Queue):
         if self.epoch_size is not None:
             last_batch = (len(data) + self._read_count) >= self.epoch_size
             if last_batch:
-                self._read_count = len(data) + self._read_count - self.epoch_size
+                self._read_count = (len(data) + self._read_count -
+                                    self.epoch_size)
                 self._last_batch = True
             else:
                 self._read_count += len(data)
                 self._last_batch = False
+
+        if self.logging_on:
+            self._update_logger_info(end-start)
 
         # Unzip the data and labels before returning
         data, labels = zip(*data)
@@ -399,6 +446,51 @@ class ImgQueue(queue.Queue):
             return data, None
         else:
             return data, labels
+
+    def _update_logger_info(self, fetch_time):
+        idx = self.logger_info['call_count']
+        idx += 1
+        self.logger_info['call_count'] = idx
+
+        # The summary scalars
+        self.logger_info['av_qsize'] += self.qsize()
+        self.logger_info['av_fetch_time'] += fetch_time
+        if idx % self.write_period == 0:
+            qsize = self.logger_info['av_qsize'] / self.write_period
+            fetch_times = self.logger_info['av_fetch_time'] / self.write_period
+            self.logger.log_scalar('queues/{}/fetch_time'.format(self.name),
+                                   fetch_times, idx)
+            self.logger.log_scalar('queues/{}/qsize'.format(self.name),
+                                   qsize, idx)
+            self.logger_info['av_qsize'] = 0
+            self.logger_info['av_fetch_time'] = 0
+
+        # The summary histograms
+        # If we fill up the buffer, wrap around to start and write at beginning
+        i = self.logger_info['epoch_idx']
+        size = self.logger_info['epoch_size']
+        i += 1
+        size += 1
+        if i % self.logger_info['epoch_qsize'].shape[0] == 0:
+            i = 0
+            size -= 1
+        self.logger_info['epoch_qsize'][i] = self.qsize()
+        self.logger_info['epoch_fetch_time'][i] = fetch_time
+
+        if self._last_batch:
+            self.logger.log_histogram(
+                'queues/{}/fetch_time'.format(self.name),
+                self.logger_info['epoch_fetch_time'][:size],
+                idx, bins=1000)
+            self.logger.log_histogram(
+                'queues/{}/qsize'.format(self.name),
+                self.logger_info['epoch_qsize'][:size],
+                idx, bins=1000)
+            i = 0
+            size = 0
+
+        self.logger_info['epoch_idx'] = i
+        self.logger_info['epoch_size'] = size
 
 
 class FileQueue(queue.Queue):

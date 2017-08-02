@@ -441,7 +441,9 @@ class ImgQueue(queue.Queue):
             self._update_logger_info(end-start)
 
         # Unzip the data and labels before returning
-        data, labels = zip(*data)
+        #  data, labels = zip(*data)
+        labels = [x[1] for x in data]
+        data = [x[0] for x in data]
         if labels[0] is None:
             return data, None
         else:

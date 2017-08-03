@@ -1,0 +1,37 @@
+#!/bin/bash
+
+float_le () {
+    python -c "import sys; sys.exit(0 if float($1) <= float($2) else 1)"
+}
+within_range () {
+    CMD="import sys; sys.exit(0 \
+if float($1) <= 1.1*float($2) else 1)"
+    python -c "$CMD"
+}
+# Get the symbolic name of the current branch
+REF=$(git name-rev --name-only HEAD)
+# Compare to previous commit
+git checkout HEAD^
+TIME2=$(python tests/time_read.py)
+# Compare to the best commit
+BEST=$(tail -1 tests/fastest_commits)
+git checkout $BEST
+TIME3=$(python tests/time_read.py)
+# Revert back to the HEAD
+git checkout $REF
+# Time its performance
+TIME1=$(python tests/time_read.py)
+echo "Your time was $TIME1"
+echo "Prev time was $TIME2"
+echo "Best time was $TIME3"
+if (within_range "$TIME1" "$TIME2") && (within_range "$TIME1" "$TIME3"); then
+    echo "ok!"
+fi
+# if (float_le "$TIME1" "$TIME2") && (float_le "$TIME1" "$TIME3"); then
+    # echo "Latest commit is the fastest"
+# elif (float_le "$TIME2" "$TIME1") && (float_le "$TIME2" "$TIME3"); then
+    # echo "Prev commit is the fastest"
+# else
+    # echo "Fastest commit is the fastest"
+# fi
+

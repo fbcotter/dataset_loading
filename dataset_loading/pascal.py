@@ -2,9 +2,9 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import numpy as np
 import os
 import pandas as pd
+from dataset_loading import core
 
 
 def img_sets():
@@ -43,7 +43,7 @@ def load_pascal_data(data_dir, max_epochs=None, thread_count=3,
     """Will use a filename queue and img_queue and load the data
     """
     file_queue = core.FileQueue()
-    d = img_dict(data_dir)
+    #  d = img_dict(data_dir)
 
     img_queue = core.ImageQueue(files_in_epoch=250, maxsize=1000)
     threads = []

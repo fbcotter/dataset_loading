@@ -11,6 +11,8 @@ import time
 import os
 import warnings
 
+__all__ = ['FileQueue', 'FileQueueNotStarted', 'FileQueueDepleted',
+           'ImgQueue', 'ImgLoader', 'ImgQueueNotStarted']
 EPOCHS_TO_PUT = 10
 
 

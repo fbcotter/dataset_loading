@@ -5,7 +5,7 @@ import pytest
 
 
 def parse_args():
-    parser = argparse.ArgumenParser()
+    parser = argparse.ArgumentParser()
     args = parser.parse_args()
     return args
 

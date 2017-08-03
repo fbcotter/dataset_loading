@@ -1,2 +1,3 @@
-from .core import FileQueue, FileQueueNotStarted, FileQueueDepleted
-from .core import ImgQueue, ImgLoader, ImgQueueNotStarted
+from .core import *  # noqa
+
+__all__ = ['core', 'cifar', 'mnist']

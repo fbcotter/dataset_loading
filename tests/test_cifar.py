@@ -53,14 +53,14 @@ def test_transform2():
 
 def test_queuemask():
     train_queue, test_queue, val_queue = cifar.get_cifar_queues(
-        '', get_queues=(True, False, False), _rand_data=True)
+        '', get_queues=(True, False, False), val_size=0, _rand_data=True)
     assert test_queue is None
     assert val_queue is None
     train_queue, test_queue, val_queue = cifar.get_cifar_queues(
         '', get_queues=(True, False, True), _rand_data=True)
     assert test_queue is None
     train_queue, test_queue, val_queue = cifar.get_cifar_queues(
-        '', get_queues=(False, True, False), _rand_data=True)
+        '', get_queues=(False, True, False), val_size=0, _rand_data=True)
     assert train_queue is None
     assert val_queue is None
 

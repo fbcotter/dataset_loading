@@ -72,9 +72,26 @@ class ImgQueue(queue.Queue):
     may however want to keep the same interface. In this case, you can call the
     take_dataset function with the dataset and labels, and then call the
     :py:meth:`get_batch` method in the same manner.
+
+    Parameters
+    ----------
+    maxsize : positive int
+        Maximum number of images to hold in the queue. Needs to not be 0 or else
+        it will keep filling up until you run out of memory.
+    name : str
+        Queue name
+
+    Raises
+    ------
+    ValueError if the maxsize parameter is incorrect.
     """
     def __init__(self, maxsize=1000, name=''):
+        if maxsize <= 0:
+            raise ValueError('The Image Queue needs to have a maximum ' +
+                             'size or you may run out of memory.')
+
         queue.Queue.__init__(self, maxsize=maxsize)
+
         self._epoch_size = None
         self._read_count = 0
         self.loaders_started = False
@@ -82,6 +99,8 @@ class ImgQueue(queue.Queue):
         self.in_memory = False
         self.name = name
         self.logging_on = False
+        self._kill = False
+        self.file_queue = None
 
     def __repr__(self):
         def bool2str(x):
@@ -161,6 +180,23 @@ class ImgQueue(queue.Queue):
             return self.queue[0][1].shape
         except:
             return None
+
+    def kill_loaders(self):
+        """ Method to signal any threads that are filling this queue to stop.
+
+        Threads will clean themselves up if the epoch limit is reached, but in
+        case you want to kill them manually before that, you can signal them to
+        stop here. Note that if these threads are blocked waiting on input, they
+        will still stay alive (and blocked) until whatever is blocking them
+        frees up. This shouldn't be a problem though, as they will not be taking
+        up any processing power.
+
+        If there is a file queue associated with this image queue, those threads
+        will be stopped too.
+        """
+        self._kill = True
+        if self.file_queue is not None:
+            self.file_queue.kill_loaders()
 
     def take_dataset(self, data, labels=None, shuffle=True, num_threads=1,
                      transform=None, max_epochs=float('inf')):
@@ -272,7 +308,7 @@ class ImgQueue(queue.Queue):
             raise FileQueueNotStarted(
                 "File Queue has to be started before reading from it")
 
-        while True:
+        while not self._kill:
             # Try get an item
             try:
                 #  item = self.file_queue.get_nowait()
@@ -516,6 +552,7 @@ class FileQueue(queue.Queue):
         # Flags for the ImgQueue
         self.filling = False
         self.started = False
+        self._kill = False
 
     def get(self, block=True, timeout=0):
         if not self.started:
@@ -523,6 +560,15 @@ class FileQueue(queue.Queue):
                 'Call load_epochs before trying to pull from the file queue')
         else:
             return super(FileQueue, self).get(block=block, timeout=timeout)
+
+    def kill_loaders(self):
+        """ Method to signal any threads that are filling this queue to stop.
+
+        Threads will clean themselves up if the epoch limit is reached, but in
+        case you want to kill them manually before that, you can signal them to
+        stop here.
+        """
+        self._kill = True
 
     def load_epochs(self, files, shuffle=True, max_epochs=float('inf')):
         """
@@ -571,7 +617,7 @@ class FileQueue(queue.Queue):
         self.epoch_count = 0
         self.epoch_size = len(files)
 
-        while self.epoch_count < self.max_epochs:
+        while self.epoch_count < self.max_epochs and not self._kill:
             if self.qsize() < 0.5*len(files):
                 epochs_to_put = min(
                     EPOCHS_TO_PUT, self.max_epochs - self.epoch_count)
@@ -620,7 +666,7 @@ class ImgLoader(threading.Thread):
             raise FileQueueNotStarted(
                 "File Queue has to be started before reading from it")
 
-        while True:
+        while not self.iqueue._kill:
             # Try get an item - the file queue running out is the main way for
             # this thread to exit.
             try:
@@ -638,6 +684,9 @@ class ImgLoader(threading.Thread):
             except queue.Empty:
                 if not self.fqueue.filling:
                     return
+
+        if self.iqueue._kill:
+            self.fqueue.kill_loaders()
 
 
 def convert_to_one_hot(vector, num_classes=None):

@@ -1,5 +1,7 @@
 import os
 from setuptools import setup, find_packages
+# Imports the __version__ variable
+exec(open(os.path.join(os.path.dirname(__file__), 'version.py')).read())
 
 
 # Utility function to read the README file.
@@ -21,14 +23,15 @@ classifiers = [
 
 setup(
     name='dataset_loading',
-    version='0.0.1',
+    version=__version__,    # noqa
     author="Fergal Cotter",
     author_email="fbc23@cam.ac.uk",
     description=("Convenience Functions for Tensorflow"),
     license="MIT",
     keywords="image datasets, cifar, pascal, mnist",
     url="https://github.com/fbcotter/dataset_loading.git",
-    packages=find_packages(exclude=["*.tests", "*.tests.*", "tests.*", "tests"]),
+    packages=find_packages(exclude=["*.tests", "*.tests.*",
+                                    "tests.*", "tests"]),
     long_description=read('README.rst'),
     classifiers=classifiers,
     install_requires=["numpy", "Pillow"],

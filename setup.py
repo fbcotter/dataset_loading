@@ -1,7 +1,7 @@
 import os
 from setuptools import setup, find_packages
 # Imports the __version__ variable
-exec(open(os.path.join(os.path.dirname(__file__), 'version.py')).read())
+#  exec(open(os.path.join(os.path.dirname(__file__), 'version.py')).read())
 
 
 # Utility function to read the README file.
@@ -10,6 +10,15 @@ exec(open(os.path.join(os.path.dirname(__file__), 'version.py')).read())
 # string in below ...
 def read(fname):
     return open(os.path.join(os.path.dirname(__file__), fname)).read()
+
+
+# Read metadata from version file
+def get_version():
+    with open("dataset_loading/__init__.py") as f:
+        for line in f:
+            if line.startswith("__version__"):
+                return line[15:-2]
+    raise Exception("Could not find version number")
 
 
 # Read metadata from version file
@@ -23,7 +32,7 @@ classifiers = [
 
 setup(
     name='dataset_loading',
-    version=__version__,    # noqa
+    version=get_version(),
     author="Fergal Cotter",
     author_email="fbc23@cam.ac.uk",
     description=("Convenience Functions for Tensorflow"),

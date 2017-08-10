@@ -35,17 +35,13 @@ setup(
     version=get_version(),
     author="Fergal Cotter",
     author_email="fbc23@cam.ac.uk",
-    description=("Convenience Functions for Tensorflow"),
+    description=("Loading image datasets using queues."),
     license="MIT",
-    keywords="image datasets, cifar, pascal, mnist",
+    keywords="image datasets, cifar, pascal, mnist, imagenet",
     url="https://github.com/fbcotter/dataset_loading.git",
     packages=find_packages(exclude=["*.tests", "*.tests.*",
                                     "tests.*", "tests"]),
     long_description=read('README.rst'),
     classifiers=classifiers,
-    install_requires=["numpy", "Pillow"],
-    tests_require=["pytest"],
-    extras_require={
-        'docs': ['sphinx', 'docutils']
-    }
+    install_requires=["numpy", "Pillow", "scipy", ]
 )

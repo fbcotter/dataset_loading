@@ -75,6 +75,16 @@ queue when adding) and where we set the limits on the number of epochs processed
 The `load_epochs` method will also start a single thread to manage the queue and
 refill it if it's getting low (shuffling along as it goes).
 
+If you know what the labels are, you should also feed them to the File Queue
+alongside the file names in a list of (file, label) tuples. E.g.:
+
+.. code:: python
+
+    # Assume <labels> is a list of all of the labels and <files> is a 
+    # list of the files.
+    file_queue = dl.FileQueue()
+    file_queue.load_epochs(list(zip(files, labels)), max_epochs=float('inf'))
+
 The ImageQueue
 ~~~~~~~~~~~~~~
 An ImageQueue_ to hold a set amount of images (not the entire batch, but enough

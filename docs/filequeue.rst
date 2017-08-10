@@ -11,7 +11,7 @@ usage:
 .. code:: python
 
     import dataset_loading as dl
-    files = [<some list of filenames or a list of tuples of (filenames, labels)]
+    files = [<some list of filenames or a list of tuples of (filenames, labels)>]
     file_queue = dl.FileQueue()
     file_queue.load_epochs(files, max_epochs=50)
 

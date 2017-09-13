@@ -7,7 +7,7 @@ import os
 import time
 
 # Package imports
-from dataset_loading import core
+from dataset_loading import core, utils
 
 # Cifar folder names
 CIFAR10_FOLDER = 'cifar-10-batches-py'
@@ -180,7 +180,7 @@ def get_clsloc_queues(base_dir, img_size=None, transform=None,
             # To get the labels, use the synset from the file name. Split on the
             # forward slash to get this
             labels = [lookup[f.split('/')[0]]-1 for f in files]
-            labels = core.convert_to_one_hot(labels, 1000)
+            labels = utils.convert_to_one_hot(labels, 1000)
 
             # Create a file queue from this
             file_queue = core.FileQueue()
@@ -232,7 +232,7 @@ def get_clsloc_queues(base_dir, img_size=None, transform=None,
 
             files = [k.split(' ')[0]+'.JPEG' for k in x]
             labels = [int(y[int(k.split(' ')[1])-1])-1 for k in x]
-            labels = core.convert_to_one_hot(labels, 1000)
+            labels = utils.convert_to_one_hot(labels, 1000)
             blacklist = [int(k)-1 for k in z]
             whitelist = np.ones((len(files),))
             whitelist[blacklist] = 0
@@ -261,9 +261,9 @@ def get_clsloc_queues(base_dir, img_size=None, transform=None,
         #  val_data = np.random.randint(255, size=(1000, 32, 32, 3))
         #  val_labels = np.random.randint(10, size=(1000,))
         #  # convert to one hot
-        #  tr_labels = core.convert_to_one_hot(tr_labels)
-        #  te_labels = core.convert_to_one_hot(te_labels)
-        #  val_labels = core.convert_to_one_hot(val_labels)
+        #  tr_labels = utils.convert_to_one_hot(tr_labels)
+        #  te_labels = utils.convert_to_one_hot(te_labels)
+        #  val_labels = utils.convert_to_one_hot(val_labels)
 
     # allow for the filling of the queues with some samples
     time.sleep(0.5)

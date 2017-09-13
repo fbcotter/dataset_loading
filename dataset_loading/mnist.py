@@ -10,7 +10,7 @@ import os
 import time
 
 # Package imports
-from dataset_loading import core
+from dataset_loading import core, utils
 import gzip
 
 
@@ -78,7 +78,7 @@ def extract_labels(f, one_hot=False, num_classes=10):
         buf = bytestream.read(num_items)
         labels = np.frombuffer(buf, dtype=np.uint8)
         if one_hot:
-            labels = core.convert_to_one_hot(labels, num_classes=num_classes)
+            labels = utils.convert_to_one_hot(labels, num_classes=num_classes)
         return labels
 
 
@@ -233,9 +233,9 @@ def get_mnist_queues(data_dir, val_size=2000, transform=None,
         val_data = np.random.randint(255, size=(val_size, 28, 28))
         val_labels = np.random.randint(10, size=(val_size,))
         # convert to one hot
-        tr_labels = core.convert_to_one_hot(tr_labels)
-        te_labels = core.convert_to_one_hot(te_labels)
-        val_labels = core.convert_to_one_hot(val_labels)
+        tr_labels = utils.convert_to_one_hot(tr_labels)
+        te_labels = utils.convert_to_one_hot(te_labels)
+        val_labels = utils.convert_to_one_hot(val_labels)
 
     # Create the 3 queues
     train_queue = None

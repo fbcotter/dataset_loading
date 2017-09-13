@@ -4,9 +4,16 @@ API Guide
 Core Functions
 --------------
 
-.. automodule:: dataset_loading.core
-    :members:     
+.. automodule:: dataset_loading
+    :members: FileQueue, ImgQueue
     :show-inheritance:
+
+Exceptions
+----------
+
+.. autoexception:: dataset_loading.ImgQueueNotStarted
+.. autoexception:: dataset_loading.FileQueueNotStarted
+.. autoexception:: dataset_loading.FileQueueDepleted
 
 Dataset Specific
 ----------------
@@ -20,7 +27,7 @@ MNIST
 CIFAR
 ~~~~~
 .. automodule:: dataset_loading.cifar
-    :members: 
+    :members: load_cifar_data, get_cifar_queues
     :show-inheritance:
 
 PASCAL

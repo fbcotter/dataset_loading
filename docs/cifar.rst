@@ -1,12 +1,45 @@
 CIFAR 10 & 100 Datasets
 =======================
 
-As this is a very commonly used dataset, there is a utility function to help
-load it in:
+As this is a very commonly used dataset, the `dataset_loading.cifar` module has
+some helper functions for handling it. 
 
-.. automodule:: dataset_loading.cifar
-    :members: get_cifar_queues
-    :noindex:
+No Queues
+---------
+
+If you don't want to use queues (possible for CIFAR as it is quite small), but
+still want to make use of a utility function to load it in, you can use the
+function :py:func:`dataset_loading.cifar.load_cifar_data`:
+
+.. code:: python
+    
+    from dataset_loading import cifar
+    CIFAR_DIR = '/path/to/saved/dataset'
+    # The load function will return a tuple
+    trainx, trainy, testx, testy, valx, valy = cifar.load_cifar_data(
+        CIFAR_DIR, cifar10=True, val_size=0, one_hot=False, download=False)
+
+
+Downloading
+'''''''''''
+
+If you don't have the data, you can get the helper functions to download it for you
+before putting the data into queues. In this case, it will be downloaded into
+the data_dir specified.
+
+.. code:: python
+
+    from dataset_loading import cifar
+    train_queue, test_queue, val_queue = cifar.get_cifar_queues(
+        '/path/to/cifar/data', cifar10=True, download=True)
+
+Loading CIFAR in Queues
+-----------------------
+
+If you want to handle the CIFAR datasets with the Queues this package builds,
+you can call the :py:func:`dataset_loading.cifar.get_cifar_queues`. This calls
+the above :py:func:`~dataset_loading.cifar.load_cifar_data` function, so also
+has the ability to download the data.
 
 The best way to understand this function is to see how it is used.
 
@@ -22,9 +55,10 @@ The best way to understand this function is to see how it is used.
     val, labels = val_queue.get_batch(100)
 
 Preprocessing
--------------
-Ok cool, what if we want to preprocess images by removing their mean before
-putting them into the queue. The benefit of this is that when your main function
+'''''''''''''
+
+What if we want to preprocess images by removing their mean before
+putting them into the queue? The benefit of this is that when your main function
 is ready for the next batch, it doesn't have to do any of this preprocessing.
 
 .. code:: python
@@ -66,7 +100,7 @@ dataset.
     val, labels = val_queue.get_batch(100)
 
 Epoch Management
-----------------
+''''''''''''''''
 One of the main annoyances with tensorflow was the difficulty of swapping
 between train and validation sets in the same main function. Say if you wanted
 to process one epoch of training data, then run some validation tests before
@@ -100,7 +134,7 @@ looking at the ImgQueue.read_count property. This shouldn't be modified however,
 as then the file queues and the image queue will get out of sync.
 
 You can put a limit on the epoch count too. When this limit is reached,
-a `dataset_loading.FileQueueDepleted` exception will be raised:
+a :py:exc:`~dataset_loading.FileQueueDepleted` exception will be raised:
 
 .. code:: python
 
@@ -123,7 +157,8 @@ a `dataset_loading.FileQueueDepleted` exception will be raised:
         print('All done')
 
 Selecting Queues
-----------------
+''''''''''''''''
+
 If you only want to get the train queue or the train and validation queues say,
 you can do this by using the `get_queues` parameter. E.g.:
 
@@ -137,7 +172,7 @@ you can do this by using the `get_queues` parameter. E.g.:
     assert test_queue is None
 
 Queue Monitoring
-----------------
+''''''''''''''''
 See the :ref:`ImageQueue-monitoring-label` section in the ImgQueue help.
 
 Miscellanea

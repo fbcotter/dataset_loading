@@ -43,5 +43,6 @@ setup(
                                     "tests.*", "tests"]),
     long_description=read('README.rst'),
     classifiers=classifiers,
-    install_requires=["numpy", "Pillow", "scipy", ]
+    setup_requires=["numpy"],
+    install_requires=["Pillow", "scipy", ]
 )

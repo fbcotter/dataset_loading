@@ -11,7 +11,42 @@ import time
 
 # Package imports
 from dataset_loading import core, utils
+from dataset_loading.utils import md5, download
 import gzip
+
+TRAINX_URL = 'http://yann.lecun.com/exdb/mnist/train-images-idx3-ubyte.gz'
+TRAINY_URL = 'http://yann.lecun.com/exdb/mnist/train-labels-idx1-ubyte.gz'
+TESTX_URL = 'http://yann.lecun.com/exdb/mnist/t10k-images-idx3-ubyte.gz'
+TESTY_URL = 'http://yann.lecun.com/exdb/mnist/t10k-labels-idx1-ubyte.gz'
+
+TRAINX_MD5 = 'f68b3c2dcbeaaa9fbdd348bbdeb94873'
+TRAINY_MD5 = 'd53e105ee54ea40749a09fcbcd1e9432'
+TESTX_MD5 = '9fb629c4189551a2d022fa330f9573f3'
+TESTY_MD5 = 'ec29112dd5afa0611ce80d1b7f02629c'
+
+
+def _download_mnist(data_dir):
+    os.makedirs(data_dir, exist_ok=True)
+
+    for d,f,m in zip(('Train Imgs', 'Train Labels', 'Test Imgs', 'Test Labels'),
+                     (TRAINX_URL, TRAINY_URL, TESTX_URL, TESTY_URL),
+                     (TRAINX_MD5, TRAINY_MD5, TESTX_MD5, TESTY_MD5)):
+        print('Looking for {}'.format(d))
+        filename = f.split('/')[-1]
+        filename = os.path.join(data_dir, filename)
+
+        # Don't re-download if it already exists
+        if not os.path.exists(filename):
+            need = True
+        elif md5(filename) != m:
+            need = True
+            print('File found but md5 checksum different. Redownloading.')
+        else:
+            print('Tar File found in data_dir. Not Downloading again')
+            need = False
+
+        if need:
+            download(f, data_dir)
 
 
 def _read32(bytestream):
@@ -82,7 +117,7 @@ def extract_labels(f, one_hot=False, num_classes=10):
         return labels
 
 
-def load_mnist_data(data_dir, val_size=2000):
+def load_mnist_data(data_dir, val_size=2000, one_hot=True, download=False):
     """Load mnist data
 
     Parameters
@@ -94,6 +129,27 @@ def load_mnist_data(data_dir, val_size=2000):
         __ http://yann.lecun.com/exdb/mnist/
     val_size : int
         Size of the validation set.
+    one_hot : bool
+        True to return one hot labels
+    download : bool
+        True if you don't have the data and want it to be downloaded for you.
+
+    Returns
+    -------
+    trainx : ndarray
+        Array containing training images. There will be 60000 - `val_size`
+        images in this.
+    trainy : ndarray
+        Array containing training labels. These will be one hot if the one_hot
+        parameter was true, otherwise the standard one of k.
+    testx : ndarray
+        Array containing test images. There will be 10000 test images in this.
+    testy : ndarray
+        Test labels
+    valx: ndarray
+        Array containing validation images. Will be None if val_size was 0.
+    valy: ndarray
+        Array containing validation labels. Will be None if val_size was 0.
     """
     if not 0 <= val_size <= 60000:
         raise ValueError(
@@ -104,6 +160,9 @@ def load_mnist_data(data_dir, val_size=2000):
     TRAIN_LABELS = 'train-labels-idx1-ubyte.gz'
     TEST_IMAGES = 't10k-images-idx3-ubyte.gz'
     TEST_LABELS = 't10k-labels-idx1-ubyte.gz'
+    # Download the data if requested
+    if download:
+        _download_mnist(data_dir)
 
     local_file = os.path.join(data_dir, TRAIN_IMAGES)
     with open(local_file, 'rb') as f:
@@ -111,7 +170,7 @@ def load_mnist_data(data_dir, val_size=2000):
 
     local_file = os.path.join(data_dir, TRAIN_LABELS)
     with open(local_file, 'rb') as f:
-        train_labels = extract_labels(f, one_hot=True)
+        train_labels = extract_labels(f, one_hot)
 
     local_file = os.path.join(data_dir, TEST_IMAGES)
     with open(local_file, 'rb') as f:
@@ -119,12 +178,16 @@ def load_mnist_data(data_dir, val_size=2000):
 
     local_file = os.path.join(data_dir, TEST_LABELS)
     with open(local_file, 'rb') as f:
-        test_labels = extract_labels(f, one_hot=True)
+        test_labels = extract_labels(f, one_hot)
 
-    val_data = train_data[:val_size]
-    val_labels = train_labels[:val_size]
-    train_data = train_data[val_size:]
-    train_labels = train_labels[val_size:]
+    if val_size > 0:
+        train_data, val_data = np.split(train_data,
+                                        [train_data.shape[0]-val_size])
+        train_labels, val_labels = np.split(train_labels,
+                                            [train_labels.shape[0]-val_size])
+    else:
+        val_data = None
+        val_labels = None
 
     return train_data, train_labels, test_data, test_labels, val_data, val_labels   # noqa
 
@@ -132,7 +195,7 @@ def load_mnist_data(data_dir, val_size=2000):
 def get_mnist_queues(data_dir, val_size=2000, transform=None,
                      maxsize=1000, num_threads=(2,2,2),
                      max_epochs=float('inf'), get_queues=(True, True, True),
-                     _rand_data=False):
+                     one_hot=True, download=False, _rand_data=False):
     """ Get Image queues for MNIST
 
     MNIST is a small dataset. This function loads it into memory and creates
@@ -173,6 +236,12 @@ def get_mnist_queues(data_dir, val_size=2000, transform=None,
         In case you only want to have training data, or training and validation,
         or any subset of the three queues, you can mask the individual queues by
         putting a False in its position in this tuple of 3 bools.
+    one_hot : bool
+        True if you want the labels pushed into the queue to be a one-hot
+        vector. If false, will push in a one-of-k representation.
+    download : bool
+        True if you want the dataset to be downloaded for you. It will be
+        downloaded into the data_dir provided in this case.
 
     Returns
     -------
@@ -223,7 +292,7 @@ def get_mnist_queues(data_dir, val_size=2000, transform=None,
     # Load the data into memory
     if not _rand_data:
         tr_data, tr_labels, te_data, te_labels, val_data, val_labels = \
-            load_mnist_data(data_dir, val_size)
+            load_mnist_data(data_dir, val_size, one_hot, download)
     else:
         # Randomly generate some image like data
         tr_data = np.random.randint(255, size=(10000-val_size, 28, 28))

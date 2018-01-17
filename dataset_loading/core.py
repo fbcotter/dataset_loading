@@ -14,6 +14,7 @@ import warnings
 __all__ = ['FileQueue', 'FileQueueNotStarted', 'FileQueueDepleted',
            'ImgQueue', 'ImgLoader', 'ImgQueueNotStarted']
 EPOCHS_TO_PUT = 10
+FILEQUEUE_SLEEPTIME = 5
 
 
 def catch_empty(func, handle=lambda e: e, *args, **kwargs):
@@ -635,7 +636,7 @@ class FileQueue(queue.Queue):
                     [self.put(item) for item in files]
                     self.epoch_count += 1
             else:
-                time.sleep(5)
+                time.sleep(FILEQUEUE_SLEEPTIME)
 
         self.filling = False
 

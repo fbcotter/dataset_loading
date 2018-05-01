@@ -13,6 +13,11 @@ def test_getqueue():
         '', _rand_data=True)
 
 
+def test_getqueuenoval():
+    train_queue, test_queue, val_queue = cifar.get_cifar_queues(
+        '', val_size=0, _rand_data=True)
+
+
 def test_pullfromqueue():
     train_queue, test_queue, val_queue = cifar.get_cifar_queues(
         '', _rand_data=True)

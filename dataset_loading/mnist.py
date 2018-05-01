@@ -320,7 +320,7 @@ def get_mnist_queues(data_dir, val_size=2000, transform=None,
                                    name='MNIST Test Queue')
         test_queue.take_dataset(te_data, te_labels, True, test_threads,
                                 test_xfm)
-    if get_queues[2] and val_data.size > 0:
+    if get_queues[2] and (val_data is not None) and val_data.size > 0:
         val_queue = core.ImgQueue(maxsize=val_qsize,
                                   name='MNIST Val Queue')
         val_queue.take_dataset(val_data, val_labels, True, val_threads,

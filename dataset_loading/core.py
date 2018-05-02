@@ -3,8 +3,11 @@ from __future__ import division
 from __future__ import print_function
 
 import numpy as np
-import queue
-import threading
+#  import queue
+from multiprocessing import Process, Lock, get_context
+from multiprocessing.queues import Queue
+from queue import Empty
+#  import threading
 import random
 from PIL import Image
 import time
@@ -24,7 +27,7 @@ def catch_empty(func, handle=lambda e: e, *args, **kwargs):
     """
     try:
         return func(*args, **kwargs)
-    except queue.Empty as e:
+    except Empty as e:
         return handle(e)
 
 
@@ -59,7 +62,7 @@ class FileQueueDepleted(Exception):
         return repr(self.value)
 
 
-class ImgQueue(queue.Queue):
+class ImgQueue(Queue):
     """A queue to hold images
 
     This queue can hold images which will be loaded from the main program.
@@ -98,7 +101,7 @@ class ImgQueue(queue.Queue):
             raise ValueError('The Image Queue needs to have a maximum ' +
                              'size or you may run out of memory.')
 
-        queue.Queue.__init__(self, maxsize=maxsize)
+        Queue.__init__(self, maxsize=maxsize, ctx=get_context())
 
         self._epoch_size = None
         self._read_count = 0
@@ -170,6 +173,11 @@ class ImgQueue(queue.Queue):
             return self.queue[0][0].shape
         except:
             return None
+
+    @property
+    def killed(self):
+        """ Returns True if the queue has been asked to die. """
+        return self._kill
 
     @property
     def label_shape(self):
@@ -268,7 +276,7 @@ class ImgQueue(queue.Queue):
                                     max_epochs=max_epochs)
 
         for i in range(num_threads):
-            thread = threading.Thread(
+            thread = Process(
                 target=self._mini_loaders, name='Mini Loader Thread',
                 kwargs={'idx': i+1}, daemon=True)
             thread.start()
@@ -337,13 +345,13 @@ class ImgQueue(queue.Queue):
                 # Put it into my queue.
                 self.put((img, label))
 
-                self.file_queue.task_done()
-            except queue.Empty:
+                #  self.file_queue.task_done()
+            except Empty:
                 # If the file queue ran out, exit quietly
                 if not self.file_queue.filling:
                     return
 
-    def start_loaders(self, file_queue, num_threads=3, img_dir='',
+    def start_loaders(self, file_queue, num_threads=3, img_dir=None,
                       img_size=None, transform=None):
         """Starts the threads to load the images into the ImageQueue
 
@@ -385,7 +393,7 @@ class ImgQueue(queue.Queue):
         self.loaders = loaders
         self.loaders_started = True
 
-    def get_batch(self, batch_size, block=False, timeout=3):
+    def get_batch(self, batch_size, timeout=1):
         """Tries to get a batch from the Queue.
 
         If there is less than a batch of images, it will grab them all.
@@ -397,8 +405,6 @@ class ImgQueue(queue.Queue):
         ----------
         batch_size : int
             How many samples we want to get.
-        block : bool
-            Whether to block (and wait for the img queue to catch up)
         timeout : bool
             How long to wait on timeout
 
@@ -440,23 +446,17 @@ class ImgQueue(queue.Queue):
         # empty error, just keep going (don't want to block the main loop)
         nsamples = min(rem, batch_size)
         start = time.time()
-        if block:
-            try:
-                data = [self.get(block=True, timeout=timeout)
-                        for _ in range(nsamples)]
-            except queue.Empty:
-                if self.file_queue.started and not self.file_queue.filling and \
-                   self.file_queue.qsize() == 0:
-                    raise FileQueueDepleted('End of Training samples reached')
-                else:
-                    raise ValueError(
-                        'Queue Empty Exception but File Queue is still' +
-                        'active. Maybe the image loaders are under heavy load?')
-
-        else:
-            data = [catch_empty(lambda: self.get(block=block))
+        try:
+            data = [self.get(block=True, timeout=timeout)
                     for _ in range(nsamples)]
-            data = [x for x in data if type(x) is not queue.Empty]
+        except Empty:
+            if self.file_queue.started and not self.file_queue.filling and \
+               self.file_queue.empty():
+                raise FileQueueDepleted('End of Training samples reached')
+            else:
+                raise ValueError(
+                    'Queue Empty Exception but File Queue is still' +
+                    'active. Maybe the image loaders are under heavy load?')
         end = time.time()
 
         if len(data) == 0:
@@ -541,7 +541,7 @@ class ImgQueue(queue.Queue):
         self.logger_info['epoch_size'] = size
 
 
-class FileQueue(queue.Queue):
+class FileQueue(Queue):
     """A queue to hold filename strings
 
     This queue is used to indicate what order of jpeg files should be read. It
@@ -552,22 +552,43 @@ class FileQueue(queue.Queue):
     to manage the queue and refill it as it gets low.
     """
     def __init__(self, maxsize=0):
-        queue.Queue.__init__(self, maxsize=maxsize)
-        self.epoch_count = -1
-        self.thread = None
+        Queue.__init__(self, maxsize=maxsize, ctx=get_context())
+        self._epoch_count = -1
+        self.epoch_count_lock = Lock()
         self.epoch_size = None
+        self.thread = None
 
         # Flags for the ImgQueue
-        self.filling = False
         self.started = False
         self._kill = False
 
-    def get(self, block=True, timeout=0):
-        if not self.started:
-            raise FileQueueNotStarted(
-                'Call load_epochs before trying to pull from the file queue')
+    @property
+    def epoch_count(self):
+        """ The current epoch count """
+        return self._epoch_count
+
+    @epoch_count.setter
+    def epoch_count(self, val):
+        """ Update the epoch count """
+        self.epoch_count_lock.acquire()
+        self._epoch_count = val
+        self.epoch_count_lock.release()
+
+    @property
+    def killed(self):
+        """ Returns true if the queue has been asked to die """
+        return self._kill
+
+    @property
+    def filling(self):
+        """ Returns true if the file queue is being filled """
+        if self.thread is None:
+            return False
         else:
-            return super(FileQueue, self).get(block=block, timeout=timeout)
+            if self.thread.is_alive():
+                return True
+            else:
+                return False
 
     def kill_loaders(self):
         """ Method to signal any threads that are filling this queue to stop.
@@ -614,44 +635,54 @@ class FileQueue(queue.Queue):
         if self.thread is None:
             myfiles = files[:]
             self.max_epochs = max_epochs
-            self.thread = threading.Thread(
-                target=self.manage_queue, name='File Queue Thread',
-                kwargs={'files': myfiles, 'shuffle': shuffle}, daemon=True)
+            self.thread = Process(
+                target=file_loader, name='File Queue Thread',
+                kwargs={'files': myfiles, 'fq': self, 'shuffle': shuffle},
+                daemon=True)
+            self.started = True
+            self.epoch_count = 0
+            self.epoch_size = len(files)
             self.thread.start()
 
-    def manage_queue(self, files, shuffle=True):
-        self.started = True
-        self.filling = True
-        self.epoch_count = 0
-        self.epoch_size = len(files)
 
-        while self.epoch_count < self.max_epochs and not self._kill:
-            if self.qsize() < 0.5*len(files):
-                epochs_to_put = min(
-                    EPOCHS_TO_PUT, self.max_epochs - self.epoch_count)
-                # Load multiple epochs in at a time
-                for i in range(epochs_to_put):
-                    if shuffle:
-                        random.shuffle(files)
-                    [self.put(item) for item in files]
-                    self.epoch_count += 1
-            else:
-                time.sleep(FILEQUEUE_SLEEPTIME)
-
-        self.filling = False
+def file_loader(files, fq, shuffle=True):
+    """ Function to fill up the file queue. This tops up the file queue whenever
+    it gets low.
+    """
+    while fq.epoch_count < fq.max_epochs and not fq.killed:
+        if fq.qsize() < 0.5*len(files) and fq.epoch_count < fq.max_epochs:
+            epochs_to_put = min(
+                EPOCHS_TO_PUT, fq.max_epochs - fq.epoch_count)
+            # Load multiple epochs in at a time
+            for i in range(epochs_to_put):
+                if shuffle:
+                    random.shuffle(files)
+                [fq.put(item) for item in files]
+                fq.epoch_count += 1
+        else:
+            time.sleep(FILEQUEUE_SLEEPTIME)
 
 
-class ImgLoader(threading.Thread):
+class ImgLoader(Process):
     """ A thread to load in images from a filename queue into an image queue.
+
+    This must be instantiated with a file queue (to read from) and an image
+    queue (to load into).
+
+    If you call the :py:meth:`ImageQueue.kill` method, the signal will be passed
+    on to this process and it will die gracefully.
     """
     def __init__(self, name, file_queue, img_queue, img_size=None,
-                 img_dir='', transform=None):
-        threading.Thread.__init__(self, daemon=True)
+                 img_dir=None, transform=None):
+        Process.__init__(self, daemon=True)
         self.name = name
         self.fqueue = file_queue
         self.iqueue = img_queue
         self.img_size = img_size
-        self.base_dir = img_dir
+        if img_dir is not None:
+            self.base_dir = img_dir
+        else:
+            self.base_dir = ''
         self.transform = transform
 
     def _load_image(self, im=''):
@@ -674,12 +705,23 @@ class ImgLoader(threading.Thread):
             raise FileQueueNotStarted(
                 "File Queue has to be started before reading from it")
 
-        while not self.iqueue._kill:
+        # Check the image queue's kill signal. So long as this is down, keep
+        # running.
+        while not self.iqueue.killed:
             # Try get an item - the file queue running out is the main way for
             # this thread to exit.
+            data = False
             try:
-                item = self.fqueue.get_nowait()
-                # Split the item into a filename and label
+                item = self.fqueue.get(timeout=5)
+                data = True
+            except Empty:
+                # If the file queue timed out and there's nothing filling it -
+                # exit
+                if not self.fqueue.filling:
+                    break
+
+            # Split the item into a filename and label
+            if data:
                 try:
                     f, label = item
                 except:
@@ -688,10 +730,4 @@ class ImgLoader(threading.Thread):
 
                 img = self._load_image(os.path.join(self.base_dir, f))
                 self.iqueue.put((img, label))
-                self.fqueue.task_done()
-            except queue.Empty:
-                if not self.fqueue.filling:
-                    return
-
-        if self.iqueue._kill:
-            self.fqueue.kill_loaders()
+                #  self.fqueue.task_done()

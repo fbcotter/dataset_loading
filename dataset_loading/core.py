@@ -21,6 +21,8 @@ __all__ = ['ImgQueue', 'FileQueue', 'ImgLoader', 'FileQueueNotStarted',
 
 EPOCHS_TO_PUT = 10
 FILEQUEUE_SLEEPTIME = 5
+FILEQUEUE_BLOCKTIME = 1
+IMGQUEUE_BLOCKTIME = 3
 
 
 class ImgQueue(Queue):
@@ -305,7 +307,18 @@ class ImgQueue(Queue):
             loaders.append(proc)
         [loader.start() for loader in loaders]
 
-    def get_batch(self, batch_size, timeout=5):
+    def get(self, block=True, timeout=None):
+        """ Get a single item from the Image Queue"""
+        if not self.loaders_started:
+            raise ImgQueueNotStarted(
+                "Start the Image Queue Loaders by calling start_loaders " +
+                "before calling get")
+        else:
+            data = super(ImgQueue, self).get(block, timeout)
+            self._read_count += 1
+            return data
+
+    def get_batch(self, batch_size, timeout=IMGQUEUE_BLOCKTIME):
         """Tries to get a batch from the Queue.
 
         If there is less than a batch of images, it will grab them all.
@@ -350,17 +363,6 @@ class ImgQueue(Queue):
         else:
             return self._get_batch(batch_size, timeout)
 
-    def get(self, block=True, timeout=None):
-        """ Get a single item from the Image Queue"""
-        if not self.loaders_started:
-            raise ImgQueueNotStarted(
-                "Start the Image Queue Loaders by calling start_loaders " +
-                "before calling get")
-        else:
-            data = super(ImgQueue, self).get(block, timeout)
-            self._read_count += 1
-            return data
-
     def _get_batch(self, batch_size, timeout=None):
         # Determine some limits on how many images to grab.
         rem = batch_size
@@ -376,6 +378,9 @@ class ImgQueue(Queue):
             except Empty:
                 # If we have already got some data, then return it
                 if len(data) == 0:
+                    # Allow some time for the file queues to definitely finish
+                    # before raising an exception
+                    time.sleep(FILEQUEUE_BLOCKTIME)
                     if self.loaders_finished:
                         raise FileQueueDepleted("No more images left")
                     else:
@@ -499,7 +504,7 @@ def _mini_loader(idx, fq, iq, data, labels, transform):
         have_data = False
         try:
             #  item = self.file_queue.get_nowait()
-            item = fq.get(block=True, timeout=5)
+            item = fq.get(block=True, timeout=FILEQUEUE_BLOCKTIME)
             have_data = True
         except Empty:
             # If the file queue ran out, exit quietly
@@ -707,7 +712,7 @@ class ImgLoader(Process):
             # this thread to exit.
             data = False
             try:
-                item = self.fqueue.get(block=True, timeout=5)
+                item = self.fqueue.get(block=True, timeout=FILEQUEUE_BLOCKTIME)
                 data = True
             except Empty:
                 # If the file queue timed out and there's nothing filling it -

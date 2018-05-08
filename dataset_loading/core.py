@@ -104,6 +104,7 @@ class ImgQueue(Queue):
         Queue.__init__(self, maxsize=maxsize, ctx=get_context())
 
         self._epoch_size = None
+        self._read_count_lock = Lock()
         self._read_count = 0
         self.loaders_started = False
         self._last_batch = False
@@ -148,7 +149,7 @@ class ImgQueue(Queue):
     def epoch_size(self):
         """ The epoch size (as interpreted from the File Queue)
         """
-        return self._epoch_size
+        return self.file_queue.epoch_size
 
     @property
     def read_count(self):
@@ -262,23 +263,23 @@ class ImgQueue(Queue):
         ------
         AssertionError if data and labels don't match up in size.
         """
-        assert data.shape[0] == labels.shape[0]
-        self._epoch_size = data.shape[0]
-        self.data = data
-        self.labels = labels
-        self.transform = transform
-
         # Create a file queue. This will only contain indices into the numpy
         # arrays data and labels.
         self.file_queue = FileQueue()
-        files = list(range(self._epoch_size))
+        files = list(range(data.shape[0]))
         self.file_queue.load_epochs(files, shuffle=shuffle,
                                     max_epochs=max_epochs)
 
         for i in range(num_threads):
             thread = Process(
-                target=self._mini_loaders, name='Mini Loader Thread',
-                kwargs={'idx': i+1}, daemon=True)
+                target=_mini_loader, name='Mini Loader Thread',
+                kwargs={'idx': i+1,
+                        'fq': self.file_queue,
+                        'iq': self,
+                        'data': data,
+                        'labels': labels,
+                        'transform': transform},
+                daemon=True)
             thread.start()
         self.loaders_started = True
 
@@ -313,44 +314,6 @@ class ImgQueue(Queue):
             'epoch_fetch_time': np.zeros((10000,))
         }
 
-    def _mini_loaders(self, idx):
-        """ Queue manager for when we have a dataset provided
-
-        This will spin up a thread to load images from the self.data array,
-        preprocess them, and put them in the Image Queue.
-        """
-        print("Starting processing thread {} for {}".format(idx, self.name))
-        if not self.file_queue.started:
-            raise FileQueueNotStarted(
-                "File Queue has to be started before reading from it")
-
-        while not self._kill:
-            # Try get an item
-            try:
-                #  item = self.file_queue.get_nowait()
-                item = self.file_queue.get()
-                # Split the item into a filename and label
-                try:
-                    f, label = item
-                except:
-                    f = item
-                    label = None
-
-                # 'Load' the image and label - reshape if necessary
-                img = self.data[f]
-                if self.transform is not None:
-                    img = self.transform(img)
-                label = self.labels[f]
-
-                # Put it into my queue.
-                self.put((img, label))
-
-                #  self.file_queue.task_done()
-            except Empty:
-                # If the file queue ran out, exit quietly
-                if not self.file_queue.filling:
-                    return
-
     def start_loaders(self, file_queue, num_threads=3, img_dir=None,
                       img_size=None, transform=None):
         """Starts the threads to load the images into the ImageQueue
@@ -383,7 +346,6 @@ class ImgQueue(Queue):
                 "which loaded the images into memory. You cannot start " +
                 "threads to load from a file queue afterwards.")
         self.file_queue = file_queue
-        self._epoch_size = file_queue.epoch_size
         loaders = [
             ImgLoader('{} Loader {}'.format(self.name, i+1), file_queue, self,
                       img_dir=img_dir, img_size=img_size, transform=transform)
@@ -442,46 +404,38 @@ class ImgQueue(Queue):
         if self.epoch_size is not None:
             rem = self.epoch_size - self._read_count
 
-        # Pull some samples from the queue - don't block and if we hit an
-        # empty error, just keep going (don't want to block the main loop)
         nsamples = min(rem, batch_size)
         start = time.time()
-        try:
-            data = [self.get(block=True, timeout=timeout)
-                    for _ in range(nsamples)]
-        except Empty:
-            if self.file_queue.started and not self.file_queue.filling and \
-               self.file_queue.empty():
-                raise FileQueueDepleted('End of Training samples reached')
-            else:
-                raise ValueError(
-                    'Queue Empty Exception but File Queue is still' +
-                    'active. Maybe the image loaders are under heavy load?')
+        data = []
+        for i in range(nsamples):
+            try:
+                item = self.get(block=True, timeout=timeout)
+            except Empty:
+                # If we have already got some data, then return it
+                if len(data) == 0:
+                    if not self.file_queue.started:
+                        raise FileQueueNotStarted(
+                            "Start the File Queue manager by calling " +
+                            "FileQueue.load_epochs before calling get_batch")
+                    elif self.file_queue.started \
+                            and not self.file_queue.filling \
+                            and self.file_queue.empty():
+                        raise FileQueueDepleted('End of Training samples')
+                    else:
+                        raise ValueError(
+                            'Queue Empty Exception but File Queue is still' +
+                            'active. Maybe the image loaders are under heavy ' +
+                            'load?')
+                else:
+                    break
+            data.append(item)
         end = time.time()
 
-        if len(data) == 0:
-            if not self.file_queue.started:
-                raise FileQueueNotStarted(
-                    "Start the File Queue manager by calling " +
-                    "FileQueue.load_epochs before calling get_batch")
-            elif self.file_queue.started and not self.file_queue.filling and \
-                    self.file_queue.qsize() == 0:
-                raise FileQueueDepleted('End of Training samples reached')
-            else:
-                warnings.warn("No images in the image queue and get_batch " +
-                              "was called with a non blocking request. " +
-                              "Returning empty data")
-                return None, None
+        with self._read_count_lock():
+            self._read_count += len(data)
 
         if self.epoch_size is not None:
-            last_batch = (len(data) + self._read_count) >= self.epoch_size
-            if last_batch:
-                self._read_count = (len(data) + self._read_count -
-                                    self.epoch_size)
-                self._last_batch = True
-            else:
-                self._read_count += len(data)
-                self._last_batch = False
+            self._last_batch = (self._read_count >= self.epoch_size)
 
         if self.logging_on:
             self._update_logger_info(end-start)
@@ -541,6 +495,53 @@ class ImgQueue(Queue):
         self.logger_info['epoch_size'] = size
 
 
+def _mini_loader(idx, fq, iq, data, labels, transform):
+    """ Image Queue manager for when we have a dataset provided
+
+    If the dataset is small enough to fit into memory and we don't need file
+    queues, we can use an image queue and a simpler multithreaded function to
+    load it. In this case, we make a mock file queue, which is just filled with
+    indices into the np array of images.
+    """
+    print("Starting processing thread {}".format(idx))
+    if not fq.started:
+        raise FileQueueNotStarted(
+            "File Queue has to be started before reading from it")
+
+    if labels is not None:
+        assert data.shape[0] == labels.shape[0]
+
+    while not iq.killed:
+        # Try get an item
+        data = False
+        try:
+            #  item = self.file_queue.get_nowait()
+            item = fq.get(block=True, timeout=5)
+            data = True
+        except Empty:
+            # If the file queue ran out, exit quietly
+            if not fq.filling:
+                return
+
+        if data:
+            try:
+                assert not isinstance(item, tuple)
+            except AssertionError:
+                item = item[0]
+
+            # 'Load' the image and label - reshape if necessary
+            img = data[item]
+            if transform is not None:
+                img = transform(img)
+            if labels is not None:
+                label = labels[item]
+            else:
+                label = None
+
+            # Put it into my queue.
+            iq.put((img, label))
+
+
 class FileQueue(Queue):
     """A queue to hold filename strings
 
@@ -555,7 +556,8 @@ class FileQueue(Queue):
         Queue.__init__(self, maxsize=maxsize, ctx=get_context())
         self._epoch_count = -1
         self.epoch_count_lock = Lock()
-        self.epoch_size = None
+
+        self._epoch_size = -1
         self.thread = None
 
         # Flags for the ImgQueue
@@ -589,6 +591,11 @@ class FileQueue(Queue):
                 return True
             else:
                 return False
+
+    @property
+    def epoch_size(self):
+        """ Gives the size of one epoch of data """
+        return self._epoch_size
 
     def kill_loaders(self):
         """ Method to signal any threads that are filling this queue to stop.
@@ -634,14 +641,14 @@ class FileQueue(Queue):
         # Limit ourselves to only one thread for the file queue
         if self.thread is None:
             myfiles = files[:]
-            self.max_epochs = max_epochs
             self.thread = Process(
                 target=file_loader, name='File Queue Thread',
                 kwargs={'files': myfiles, 'fq': self, 'shuffle': shuffle},
                 daemon=True)
+            self.max_epochs = max_epochs
             self.started = True
-            self.epoch_count = 0
-            self.epoch_size = len(files)
+            self._epoch_count = 0
+            self._epoch_size = len(files)
             self.thread.start()
 
 
@@ -712,7 +719,7 @@ class ImgLoader(Process):
             # this thread to exit.
             data = False
             try:
-                item = self.fqueue.get(timeout=5)
+                item = self.fqueue.get(block=True, timeout=5)
                 data = True
             except Empty:
                 # If the file queue timed out and there's nothing filling it -

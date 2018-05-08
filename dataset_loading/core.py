@@ -4,7 +4,7 @@ from __future__ import print_function
 
 import numpy as np
 #  import queue
-from multiprocessing import Process, Lock, get_context
+from multiprocessing import Process, Lock, get_context, Manager
 from multiprocessing.queues import Queue
 from queue import Empty
 #  import threading
@@ -103,16 +103,17 @@ class ImgQueue(Queue):
 
         Queue.__init__(self, maxsize=maxsize, ctx=get_context())
 
-        self._epoch_size = None
         self._read_count_lock = Lock()
         self._read_count = 0
-        self.loaders_started = False
         self._last_batch = False
         self.in_memory = False
         self.name = name
         self.logging_on = False
-        self._kill = False
         self.file_queue = None
+
+        self.mngr = Manager()
+        self._kill = self.mngr.Value('b', False)
+        self.loaders_alive = []
 
     def __repr__(self):
         def bool2str(x):
@@ -122,6 +123,7 @@ class ImgQueue(Queue):
                 return "no"
         return ("ImgQueue instance - {}.\n".format(self.name) +
                 "Loaders started: {}\n".format(bool2str(self.loaders_started)) +
+                "Loaders done: {}\n".format(bool2str(self.loaders_finished)) +
                 "Dataset in mem: {}\n".format(bool2str(self.in_memory)) +
                 "Read count: {}\n".format(self.read_count) +
                 "Epoch size: {}\n".format(self.epoch_size))
@@ -149,7 +151,10 @@ class ImgQueue(Queue):
     def epoch_size(self):
         """ The epoch size (as interpreted from the File Queue)
         """
-        return self.file_queue.epoch_size
+        if self.file_queue is not None:
+            return self.file_queue.epoch_size
+        else:
+            return -1
 
     @property
     def read_count(self):
@@ -178,7 +183,7 @@ class ImgQueue(Queue):
     @property
     def killed(self):
         """ Returns True if the queue has been asked to die. """
-        return self._kill
+        return self._kill.value
 
     @property
     def label_shape(self):
@@ -198,6 +203,14 @@ class ImgQueue(Queue):
         except:
             return None
 
+    @property
+    def loaders_started(self):
+        return len(self.loaders_alive) > 0
+
+    @property
+    def loaders_finished(self):
+        return self.loaders_started and (True not in self.loaders_alive)
+
     def kill_loaders(self):
         """ Method to signal any threads that are filling this queue to stop.
 
@@ -211,9 +224,49 @@ class ImgQueue(Queue):
         If there is a file queue associated with this image queue, those threads
         will be stopped too.
         """
-        self._kill = True
+        self._kill.value = True
         if self.file_queue is not None:
             self.file_queue.kill_loaders()
+
+    def start_loaders(self, file_queue, num_threads=3, img_dir=None,
+                      img_size=None, transform=None):
+        """Starts the threads to load the images into the ImageQueue
+
+        Parameters
+        ----------
+        file_queue : FileQueue object
+            An instance of the file queue
+        num_threads : int
+            How many parallel threads to start to load the images
+        img_dir : str
+            Offset to add to the strings fetched from the file queue so that a
+            call to load the file in will succeed.
+        img_size : tuple of (height, width) or None
+            What size to resize all the images to. If None, no resizing will be
+            done.
+        transform : function handle or None
+            Pre-filtering operation to apply to the images before adding to the
+            Image Queue. If None, no operation will be applied. Otherwise, has
+            to be a function handle that takes the numpy array and returns the
+            transformed image as a numpy array.
+
+        Raises
+        ------
+        ValueError: if called after take_dataset.
+        """
+        if self.in_memory:
+            raise ValueError(
+                "You have already called take_dataset for this Image Queue, " +
+                "which loaded the images into memory. You cannot start " +
+                "threads to load from a file queue afterwards.")
+        self.file_queue = file_queue
+        self.loaders_alive = self.mngr.list([True,]*num_threads)
+        loaders = [
+            ImgLoader(i, file_queue, self, img_dir=img_dir,
+                      img_size=img_size, transform=transform)
+            for i in range(num_threads)
+        ]
+        [loader.start() for loader in loaders]
 
     def take_dataset(self, data, labels=None, shuffle=True, num_threads=1,
                      transform=None, max_epochs=float('inf')):
@@ -270,90 +323,20 @@ class ImgQueue(Queue):
         self.file_queue.load_epochs(files, shuffle=shuffle,
                                     max_epochs=max_epochs)
 
+        loaders = []
+        self.loaders_alive = self.mngr.list([True,]*num_threads)
         for i in range(num_threads):
-            thread = Process(
+            proc = Process(
                 target=_mini_loader, name='Mini Loader Thread',
-                kwargs={'idx': i+1,
+                kwargs={'idx': i,
                         'fq': self.file_queue,
                         'iq': self,
                         'data': data,
                         'labels': labels,
                         'transform': transform},
                 daemon=True)
-            thread.start()
-        self.loaders_started = True
-
-    def add_logging(self, writer, write_period=10):
-        """ Adds ability to monitor queue sizes and fetch times.
-
-        Will try to import tensorflow and throw a warnings.warn if it couldn't.
-
-        Parameters
-        ----------
-        file_writer : tensorflow FileWriter object
-            Uses this object to write out summaries.
-        write_period : int
-            After how many calls to get_batch should we write to the logger.
-        """
-        try:
-            from dataset_loading.tensorboard_logging import Logger
-        except ImportError:
-            warnings.warn('Sorry, I couldnt import the necessary modules')
-            return
-        self.logger = Logger(writer=writer)
-        self.write_period = write_period
-        self.call_count = 0
-        self.logging_on = True
-        self.logger_info = {
-            'call_count': 0,
-            'av_qsize': 0,
-            'av_fetch_time': 0,
-            'epoch_idx': 0,
-            'epoch_size': 0,
-            'epoch_qsize': np.zeros((10000,)),
-            'epoch_fetch_time': np.zeros((10000,))
-        }
-
-    def start_loaders(self, file_queue, num_threads=3, img_dir=None,
-                      img_size=None, transform=None):
-        """Starts the threads to load the images into the ImageQueue
-
-        Parameters
-        ----------
-        file_queue : FileQueue object
-            An instance of the file queue
-        num_threads : int
-            How many parallel threads to start to load the images
-        img_dir : str
-            Offset to add to the strings fetched from the file queue so that a
-            call to load the file in will succeed.
-        img_size : tuple of (height, width) or None
-            What size to resize all the images to. If None, no resizing will be
-            done.
-        transform : function handle or None
-            Pre-filtering operation to apply to the images before adding to the
-            Image Queue. If None, no operation will be applied. Otherwise, has
-            to be a function handle that takes the numpy array and returns the
-            transformed image as a numpy array.
-
-        Raises
-        ------
-        ValueError: if called after take_dataset.
-        """
-        if self.in_memory:
-            raise ValueError(
-                "You have already called take_dataset for this Image Queue, " +
-                "which loaded the images into memory. You cannot start " +
-                "threads to load from a file queue afterwards.")
-        self.file_queue = file_queue
-        loaders = [
-            ImgLoader('{} Loader {}'.format(self.name, i+1), file_queue, self,
-                      img_dir=img_dir, img_size=img_size, transform=transform)
-            for i in range(num_threads)
-        ]
+            loaders.append(proc)
         [loader.start() for loader in loaders]
-        self.loaders = loaders
-        self.loaders_started = True
 
     def get_batch(self, batch_size, timeout=1):
         """Tries to get a batch from the Queue.
@@ -393,12 +376,25 @@ class ImgQueue(Queue):
         have started.
         queue.Empty - If timed out on trying to read an image
         """
-        # The data is being fed by queueing threads.
         if not self.loaders_started:
             raise ImgQueueNotStarted(
                 "Start the Image Queue Loaders by calling start_loaders " +
-                "before calling get_batch")
+                "before calling get")
+        else:
+            return self._get_batch(batch_size, timeout)
 
+    def get(self, block=True, timeout=None):
+        """ Get a single item from the Image Queue"""
+        if not self.loaders_started:
+            raise ImgQueueNotStarted(
+                "Start the Image Queue Loaders by calling start_loaders " +
+                "before calling get")
+        else:
+            data = super(ImgQueue, self).get(block, timeout)
+            self._read_count += 1
+            return data
+
+    def _get_batch(self, batch_size, timeout=None):
         # Determine some limits on how many images to grab.
         rem = batch_size
         if self.epoch_size is not None:
@@ -413,14 +409,8 @@ class ImgQueue(Queue):
             except Empty:
                 # If we have already got some data, then return it
                 if len(data) == 0:
-                    if not self.file_queue.started:
-                        raise FileQueueNotStarted(
-                            "Start the File Queue manager by calling " +
-                            "FileQueue.load_epochs before calling get_batch")
-                    elif self.file_queue.started \
-                            and not self.file_queue.filling \
-                            and self.file_queue.empty():
-                        raise FileQueueDepleted('End of Training samples')
+                    if self.loaders_finished:
+                        raise FileQueueDepleted("No more images left")
                     else:
                         raise ValueError(
                             'Queue Empty Exception but File Queue is still' +
@@ -430,9 +420,6 @@ class ImgQueue(Queue):
                     break
             data.append(item)
         end = time.time()
-
-        with self._read_count_lock():
-            self._read_count += len(data)
 
         if self.epoch_size is not None:
             self._last_batch = (self._read_count >= self.epoch_size)
@@ -448,6 +435,37 @@ class ImgQueue(Queue):
             return data, None
         else:
             return data, labels
+
+    def add_logging(self, writer, write_period=10):
+        """ Adds ability to monitor queue sizes and fetch times.
+
+        Will try to import tensorflow and throw a warnings.warn if it couldn't.
+
+        Parameters
+        ----------
+        file_writer : tensorflow FileWriter object
+            Uses this object to write out summaries.
+        write_period : int
+            After how many calls to get_batch should we write to the logger.
+        """
+        try:
+            from dataset_loading.tensorboard_logging import Logger
+        except ImportError:
+            warnings.warn('Sorry, I couldnt import the necessary modules')
+            return
+        self.logger = Logger(writer=writer)
+        self.write_period = write_period
+        self.call_count = 0
+        self.logging_on = True
+        self.logger_info = {
+            'call_count': 0,
+            'av_qsize': 0,
+            'av_fetch_time': 0,
+            'epoch_idx': 0,
+            'epoch_size': 0,
+            'epoch_qsize': np.zeros((10000,)),
+            'epoch_fetch_time': np.zeros((10000,))
+        }
 
     def _update_logger_info(self, fetch_time):
         idx = self.logger_info['call_count']
@@ -504,26 +522,22 @@ def _mini_loader(idx, fq, iq, data, labels, transform):
     indices into the np array of images.
     """
     print("Starting processing thread {}".format(idx))
-    if not fq.started:
-        raise FileQueueNotStarted(
-            "File Queue has to be started before reading from it")
-
     if labels is not None:
         assert data.shape[0] == labels.shape[0]
 
     while not iq.killed:
         # Try get an item
-        data = False
+        have_data = False
         try:
             #  item = self.file_queue.get_nowait()
             item = fq.get(block=True, timeout=5)
-            data = True
+            have_data = True
         except Empty:
             # If the file queue ran out, exit quietly
             if not fq.filling:
                 return
 
-        if data:
+        if have_data:
             try:
                 assert not isinstance(item, tuple)
             except AssertionError:
@@ -540,6 +554,8 @@ def _mini_loader(idx, fq, iq, data, labels, transform):
 
             # Put it into my queue.
             iq.put((img, label))
+    print("Done")
+    iq.loaders_alive[idx] = False
 
 
 class FileQueue(Queue):
@@ -554,48 +570,52 @@ class FileQueue(Queue):
     """
     def __init__(self, maxsize=0):
         Queue.__init__(self, maxsize=maxsize, ctx=get_context())
-        self._epoch_count = -1
-        self.epoch_count_lock = Lock()
-
         self._epoch_size = -1
         self.thread = None
+        self.started = False
 
         # Flags for the ImgQueue
-        self.started = False
-        self._kill = False
+        self.mngr = Manager()
+        self._kill = self.mngr.Value('b', False)
+        self.loader_alive = self.mngr.Value('b', False)
+        self._epoch_count = self.mngr.Value('i', -1)
 
     @property
     def epoch_count(self):
         """ The current epoch count """
-        return self._epoch_count
+        return self._epoch_count.value
 
     @epoch_count.setter
     def epoch_count(self, val):
         """ Update the epoch count """
-        self.epoch_count_lock.acquire()
-        self._epoch_count = val
-        self.epoch_count_lock.release()
+        self._epoch_count.value = val
 
     @property
     def killed(self):
         """ Returns true if the queue has been asked to die """
-        return self._kill
+        return self._kill.value
 
     @property
     def filling(self):
         """ Returns true if the file queue is being filled """
-        if self.thread is None:
-            return False
-        else:
-            if self.thread.is_alive():
-                return True
-            else:
-                return False
+        return self.loader_alive.value
 
     @property
     def epoch_size(self):
         """ Gives the size of one epoch of data """
         return self._epoch_size
+
+    def get(self, block=True, timeout=None):
+        """ Get a single item from the Image Queue"""
+        if not self.started:
+            raise FileQueueNotStarted(
+                "Start the File Queue manager by calling " +
+                "FileQueue.load_epochs before calling get_batch")
+        else:
+            return super(FileQueue, self).get(block, timeout)
+
+    def _depleted(self):
+        raise FileQueueDepleted('End of Training samples')
 
     def kill_loaders(self):
         """ Method to signal any threads that are filling this queue to stop.
@@ -604,7 +624,7 @@ class FileQueue(Queue):
         case you want to kill them manually before that, you can signal them to
         stop here.
         """
-        self._kill = True
+        self._kill.value = True
 
     def load_epochs(self, files, shuffle=True, max_epochs=float('inf')):
         """
@@ -646,9 +666,10 @@ class FileQueue(Queue):
                 kwargs={'files': myfiles, 'fq': self, 'shuffle': shuffle},
                 daemon=True)
             self.max_epochs = max_epochs
-            self.started = True
-            self._epoch_count = 0
+            self._epoch_count.value = 0
             self._epoch_size = len(files)
+            self.loader_alive.value = True
+            self.started = True
             self.thread.start()
 
 
@@ -668,6 +689,8 @@ def file_loader(files, fq, shuffle=True):
                 fq.epoch_count += 1
         else:
             time.sleep(FILEQUEUE_SLEEPTIME)
+    print("File Loader Done")
+    fq.loader_alive.value = False
 
 
 class ImgLoader(Process):
@@ -679,10 +702,10 @@ class ImgLoader(Process):
     If you call the :py:meth:`ImageQueue.kill` method, the signal will be passed
     on to this process and it will die gracefully.
     """
-    def __init__(self, name, file_queue, img_queue, img_size=None,
+    def __init__(self, idx, file_queue, img_queue, img_size=None,
                  img_dir=None, transform=None):
         Process.__init__(self, daemon=True)
-        self.name = name
+        self.idx = idx
         self.fqueue = file_queue
         self.iqueue = img_queue
         self.img_size = img_size
@@ -707,11 +730,7 @@ class ImgLoader(Process):
         return img_np
 
     def run(self):
-        print("Starting " + self.name)
-        if not self.fqueue.started:
-            raise FileQueueNotStarted(
-                "File Queue has to be started before reading from it")
-
+        print("Starting ImgLoader {}".format(self.idx))
         # Check the image queue's kill signal. So long as this is down, keep
         # running.
         while not self.iqueue.killed:
@@ -738,3 +757,6 @@ class ImgLoader(Process):
                 img = self._load_image(os.path.join(self.base_dir, f))
                 self.iqueue.put((img, label))
                 #  self.fqueue.task_done()
+                #
+        print("Img Loader {} Done".format(self.idx))
+        self.iqueue.loaders_alive[self.idx] = False

@@ -108,7 +108,7 @@ def test_epochlimit():
     sleep(1)
     epoch_size = train_queue.epoch_size
     for i in range(int(np.ceil(epoch_size//100))):
-        data, labels = train_queue.get_batch(100, block=True)
+        data, labels = train_queue.get_batch(100)
 
     with pytest.raises(FileQueueDepleted, message="Expecting queue empty exception at epoch limit"):  # noqa
         data, labels = train_queue.get_batch(100)

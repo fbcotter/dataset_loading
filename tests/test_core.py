@@ -23,6 +23,12 @@ def setup():
     files = [f for f in files if os.path.splitext(f)[1] == '.jpeg']
 
 
+def test_filequeue_repr():
+    file_queue = dl.FileQueue()
+    file_queue.load_epochs(files)
+    file_queue.__repr__()
+
+
 def test_filequeue():
     # Test we can create a queue and read from it.
     file_queue = dl.FileQueue()
@@ -117,16 +123,41 @@ def test_imgqueue():
     img_queue.get_batch(100)
 
 
+def test_imgqueue_repr():
+    file_queue = dl.FileQueue()
+    file_queue.load_epochs(files)
+    img_queue = dl.ImgQueue()
+    img_queue.start_loaders(file_queue, num_threads=3, img_dir=IMG_DIR)
+    img_queue.__repr__()
+
+
 def test_imgqueue_epochreached():
     # Test we get the right exception when we've hit the sample limit
     file_queue = dl.FileQueue()
     file_queue.load_epochs(files, max_epochs=1)
-
     img_queue = dl.ImgQueue()
     img_queue.start_loaders(file_queue, num_threads=3, img_dir=IMG_DIR)
     img_queue.get_batch(batch_size=len(files))
     with pytest.raises(dl.FileQueueDepleted):
         img_queue.get_batch(1)
+
+
+def test_imgqueue_loadersalive():
+    file_queue = dl.FileQueue()
+    file_queue.load_epochs(files, max_epochs=1)
+    assert file_queue.filling
+    img_queue = dl.ImgQueue()
+    img_queue.start_loaders(file_queue, num_threads=3, img_dir=IMG_DIR)
+    sleep(5)
+    assert not img_queue.loaders_finished
+    assert img_queue.filling
+    img_queue.kill_loaders()
+    sleep(1)
+    assert not file_queue.filling
+    img_queue.get_batch(50)
+    sleep(5)
+    assert not img_queue.filling
+    assert img_queue.loaders_finished
 
 
 def test_imgqueue_nostart():
@@ -164,6 +195,7 @@ def test_lastbatch():
     # Get an entire epoch first
     data, labels = img_queue.get_batch(len(files))
     assert img_queue.last_batch
+    assert not img_queue.last_batch
 
     # Get batches of 10 images and test the flag works
     num_batches = np.ceil(len(files)/10).astype('int')

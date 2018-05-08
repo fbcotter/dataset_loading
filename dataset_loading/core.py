@@ -14,52 +14,13 @@ import time
 import os
 import warnings
 
-__all__ = ['FileQueue', 'FileQueueNotStarted', 'FileQueueDepleted',
-           'ImgQueue', 'ImgLoader', 'ImgQueueNotStarted']
+#  __all__ = ['FileQueue', 'FileQueueNotStarted', 'FileQueueDepleted',
+           #  'ImgQueue', 'ImgLoader', 'ImgQueueNotStarted']
+__all__ = ['ImgQueue', 'FileQueue', 'ImgLoader', 'FileQueueNotStarted',
+           'FileQueueDepleted', 'ImgQueueNotStarted']
+
 EPOCHS_TO_PUT = 10
 FILEQUEUE_SLEEPTIME = 5
-
-
-def catch_empty(func, handle=lambda e: e, *args, **kwargs):
-    """ Returns the empty exception rather than raising it
-
-    Useful for calling queue.get in a list comprehension
-    """
-    try:
-        return func(*args, **kwargs)
-    except Empty as e:
-        return handle(e)
-
-
-class ImgQueueNotStarted(Exception):
-    """Exception Raised when trying to pull from an Image queue that hasn't had
-    its feeders started.
-    """
-    def __init__(self, value):
-        self.value = value
-
-    def __str__(self):
-        return repr(self.value)
-
-
-class FileQueueNotStarted(Exception):
-    """Exception Raised when trying to pull from a File queue that hasn't had
-    its manager started."""
-    def __init__(self, value):
-        self.value = value
-
-    def __str__(self):
-        return repr(self.value)
-
-
-class FileQueueDepleted(Exception):
-    """Exception Raised when the file queue has been depleted. Will be raised
-    when the epoch limit is reached."""
-    def __init__(self, value):
-        self.value = value
-
-    def __str__(self):
-        return repr(self.value)
 
 
 class ImgQueue(Queue):
@@ -105,6 +66,7 @@ class ImgQueue(Queue):
 
         self._read_count_lock = Lock()
         self._read_count = 0
+        self._epoch_count = 0
         self._last_batch = False
         self.in_memory = False
         self.name = name
@@ -206,6 +168,11 @@ class ImgQueue(Queue):
     @property
     def loaders_started(self):
         return len(self.loaders_alive) > 0
+
+    @property
+    def filling(self):
+        """ Returns true if the file queue is being filled """
+        return (True in self.loaders_alive)
 
     @property
     def loaders_finished(self):
@@ -338,7 +305,7 @@ class ImgQueue(Queue):
             loaders.append(proc)
         [loader.start() for loader in loaders]
 
-    def get_batch(self, batch_size, timeout=1):
+    def get_batch(self, batch_size, timeout=5):
         """Tries to get a batch from the Queue.
 
         If there is less than a batch of images, it will grab them all.
@@ -398,7 +365,7 @@ class ImgQueue(Queue):
         # Determine some limits on how many images to grab.
         rem = batch_size
         if self.epoch_size is not None:
-            rem = self.epoch_size - self._read_count
+            rem = self.epoch_size - (self._read_count % self.epoch_size)
 
         nsamples = min(rem, batch_size)
         start = time.time()
@@ -422,7 +389,9 @@ class ImgQueue(Queue):
         end = time.time()
 
         if self.epoch_size is not None:
-            self._last_batch = (self._read_count >= self.epoch_size)
+            if self._read_count // self.epoch_size > self._epoch_count:
+                self._last_batch = True
+                self._epoch_count = self._read_count // self.epoch_size
 
         if self.logging_on:
             self._update_logger_info(end-start)
@@ -756,7 +725,49 @@ class ImgLoader(Process):
 
                 img = self._load_image(os.path.join(self.base_dir, f))
                 self.iqueue.put((img, label))
-                #  self.fqueue.task_done()
-                #
         print("Img Loader {} Done".format(self.idx))
         self.iqueue.loaders_alive[self.idx] = False
+
+
+def catch_empty(func, handle=lambda e: e, *args, **kwargs):
+    """ Returns the empty exception rather than raising it
+
+    Useful for calling queue.get in a list comprehension
+    """
+    try:
+        return func(*args, **kwargs)
+    except Empty as e:
+        return handle(e)
+
+
+class ImgQueueNotStarted(Exception):
+    """Exception Raised when trying to pull from an Image queue that hasn't had
+    its feeders started.
+    """
+    def __init__(self, value):
+        self.value = value
+
+    def __str__(self):
+        return repr(self.value)
+
+
+class FileQueueNotStarted(Exception):
+    """Exception Raised when trying to pull from a File queue that hasn't had
+    its manager started."""
+    def __init__(self, value):
+        self.value = value
+
+    def __str__(self):
+        return repr(self.value)
+
+
+class FileQueueDepleted(Exception):
+    """Exception Raised when the file queue has been depleted. Will be raised
+    when the epoch limit is reached."""
+    def __init__(self, value):
+        self.value = value
+
+    def __str__(self):
+        return repr(self.value)
+
+

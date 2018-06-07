@@ -122,9 +122,14 @@ class ImgQueue(Queue):
 
     @property
     def read_count(self):
-        """ Returns how many images have been read in the current epoch.
+        """ Returns how many images have been read from this queue.
         """
         return self._read_count
+
+    @property
+    def epoch_count(self):
+        """ Returns what epoch we are currently at """
+        return self._epoch_count
 
     @property
     def img_shape(self):
@@ -774,5 +779,3 @@ class FileQueueDepleted(Exception):
 
     def __str__(self):
         return repr(self.value)
-
-

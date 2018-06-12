@@ -26,6 +26,7 @@ def setup():
 def test_filequeue_repr():
     file_queue = dl.FileQueue()
     file_queue.load_epochs(files)
+    sleep(0.5)
     file_queue.__repr__()
 
 
@@ -33,6 +34,7 @@ def test_filequeue():
     # Test we can create a queue and read from it.
     file_queue = dl.FileQueue()
     file_queue.load_epochs(files)
+    sleep(0.5)
     for i in range(1000):
         file_queue.get(timeout=MAX_TIMEOUT)
 
@@ -40,9 +42,10 @@ def test_filequeue():
 def test_filequeue_max_epochs():
     # Test the max_epoch argument works as expected
     file_queue = dl.FileQueue()
-
     epoch_size = len(files)
     file_queue.load_epochs(files, max_epochs=2)
+    sleep(0.5)
+
     # Eat up everything
     for i in range(2*epoch_size):
         file_queue.get(timeout=MAX_TIMEOUT)
@@ -71,6 +74,7 @@ def test_filequeue_unique():
     file_queue = dl.FileQueue()
 
     file_queue.load_epochs(files, max_epochs=1)
+    sleep(0.5)
     new_files = [file_queue.get(timeout=MAX_TIMEOUT)
                  for _ in range(file_queue.epoch_size)]
     import collections
@@ -82,6 +86,7 @@ def test_filequeue_shuffle():
     file_queue = dl.FileQueue()
 
     file_queue.load_epochs(files, max_epochs=1)
+    sleep(0.5)
     new_files = [file_queue.get(timeout=MAX_TIMEOUT)
                  for _ in range(file_queue.epoch_size)]
 
@@ -99,6 +104,7 @@ def test_filequeue_noshuffle():
     file_queue = dl.FileQueue()
 
     file_queue.load_epochs(files, max_epochs=1, shuffle=False)
+    sleep(0.5)
     new_files = [file_queue.get(timeout=MAX_TIMEOUT)
                  for _ in range(file_queue.epoch_size)]
 
@@ -115,6 +121,7 @@ def test_imgqueue():
     # Test the imgqueue is working
     file_queue = dl.FileQueue()
     file_queue.load_epochs(files)
+    sleep(0.5)
 
     img_queue = dl.ImgQueue()
     img_queue.start_loaders(file_queue, num_threads=3, img_dir=IMG_DIR)
@@ -126,6 +133,7 @@ def test_imgqueue():
 def test_imgqueue_repr():
     file_queue = dl.FileQueue()
     file_queue.load_epochs(files)
+    sleep(0.5)
     img_queue = dl.ImgQueue()
     img_queue.start_loaders(file_queue, num_threads=3, img_dir=IMG_DIR)
     img_queue.__repr__()
@@ -135,27 +143,27 @@ def test_imgqueue_epochreached():
     # Test we get the right exception when we've hit the sample limit
     file_queue = dl.FileQueue()
     file_queue.load_epochs(files, max_epochs=1)
+    sleep(0.5)
     img_queue = dl.ImgQueue()
     img_queue.start_loaders(file_queue, num_threads=3, img_dir=IMG_DIR)
+    sleep(0.5)
     img_queue.get_batch(batch_size=len(files))
     with pytest.raises(dl.FileQueueDepleted):
         img_queue.get_batch(1)
 
 
 def test_imgqueue_loadersalive():
-    file_queue = dl.FileQueue()
+    file_queue = dl.FileQueue(maxsize=10)
     file_queue.load_epochs(files, max_epochs=1)
+    sleep(0.5)
     assert file_queue.filling
-    img_queue = dl.ImgQueue()
+    img_queue = dl.ImgQueue(maxsize=10)
     img_queue.start_loaders(file_queue, num_threads=3, img_dir=IMG_DIR)
-    sleep(5)
+    sleep(1)
     assert not img_queue.loaders_finished
     assert img_queue.filling
-    img_queue.kill_loaders()
-    sleep(1)
+    img_queue.join_loaders()
     assert not file_queue.filling
-    img_queue.get_batch(50)
-    sleep(5)
     assert not img_queue.filling
     assert img_queue.loaders_finished
 
@@ -165,6 +173,7 @@ def test_imgqueue_nostart():
     # without starting the loaders
     file_queue = dl.FileQueue()
     file_queue.load_epochs(files, max_epochs=1)
+    sleep(0.5)
 
     img_queue = dl.ImgQueue()
     with pytest.raises(dl.ImgQueueNotStarted):
@@ -176,6 +185,7 @@ def test_imgqueue_lots():
     # queue without letting it fill up
     file_queue = dl.FileQueue()
     file_queue.load_epochs(files)
+    sleep(0.5)
 
     img_queue = dl.ImgQueue()
     img_queue.start_loaders(file_queue, num_threads=3, img_dir=IMG_DIR)
@@ -188,9 +198,11 @@ def test_lastbatch():
     # Test the status of the last_batch flag is working as expected
     file_queue = dl.FileQueue()
     file_queue.load_epochs(files, max_epochs=10)
+    sleep(0.5)
 
     img_queue = dl.ImgQueue()
     img_queue.start_loaders(file_queue, num_threads=3, img_dir=IMG_DIR)
+    sleep(1)
 
     # Get an entire epoch first
     data, labels = img_queue.get_batch(len(files))
@@ -219,6 +231,7 @@ def test_transform():
     # queue without letting it fill up
     file_queue = dl.FileQueue()
     file_queue.load_epochs(files)
+    sleep(0.5)
 
     img_queue = dl.ImgQueue()
     def transform(x):

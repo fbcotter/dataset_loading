@@ -4,7 +4,7 @@ from __future__ import print_function
 
 import numpy as np
 #  import queue
-from multiprocessing import Process, Lock, get_context, Manager
+from multiprocessing import Process, Lock, get_context, Manager, Array
 from multiprocessing.queues import Queue
 from queue import Empty
 #  import threading
@@ -77,7 +77,8 @@ class ImgQueue(Queue):
 
         self.mngr = Manager()
         self._kill = self.mngr.Value('b', False)
-        self.loaders = []
+        self.loaders_alive = []
+        self.loaders_started = False
 
     def __repr__(self):
         def bool2str(x):
@@ -173,13 +174,9 @@ class ImgQueue(Queue):
             return None
 
     @property
-    def loaders_started(self):
-        return len(self.loaders) > 0
-
-    @property
     def filling(self):
         """ Returns true if the file queue is being filled """
-        return (True in [l.is_alive() for l in self.loaders])
+        return (1 in self.loaders_alive)
 
     @property
     def loaders_finished(self):
@@ -250,12 +247,15 @@ class ImgQueue(Queue):
                 "which loaded the images into memory. You cannot start " +
                 "threads to load from a file queue afterwards.")
         self.file_queue = file_queue
+        #  self.loaders_alive = self.mngr.List([True,]*num_threads)
+        self.loaders_alive = Array('b', [True,]*num_threads)
         loaders = [
             ImgLoader(i, file_queue, self, img_dir=img_dir,
                       img_size=img_size, transform=transform)
             for i in range(num_threads)
         ]
         [loader.start() for loader in loaders]
+        self.loaders_started = True
         self.loaders = loaders
 
     def take_dataset(self, data, labels=None, shuffle=True, num_threads=1,
@@ -314,6 +314,8 @@ class ImgQueue(Queue):
                                     max_epochs=max_epochs)
 
         loaders = []
+        #  self.loaders_alive = self.mngr.list([True,]*num_threads)
+        self.loaders_alive = Array('b', [True,]*num_threads)
         for i in range(num_threads):
             proc = Process(
                 target=_mini_loader, name='Mini Loader Thread',
@@ -326,6 +328,7 @@ class ImgQueue(Queue):
                 daemon=True)
             loaders.append(proc)
         [loader.start() for loader in loaders]
+        self.loaders_started = True
         self.loaders = loaders
 
     def get(self, block=True, timeout=None):
@@ -516,7 +519,7 @@ def _mini_loader(idx, fq, iq, data, labels, transform):
     load it. In this case, we make a mock file queue, which is just filled with
     indices into the np array of images.
     """
-    #  print("Starting processing thread {}".format(idx))
+    #  print("Starting miniloader thread {}".format(idx))
     if labels is not None:
         assert data.shape[0] == labels.shape[0]
 
@@ -530,7 +533,7 @@ def _mini_loader(idx, fq, iq, data, labels, transform):
         except Empty:
             # If the file queue ran out, exit quietly
             if not fq.filling:
-                return
+                break
 
         if have_data:
             try:
@@ -549,8 +552,8 @@ def _mini_loader(idx, fq, iq, data, labels, transform):
 
             # Put it into my queue.
             iq.put((img, label))
-    print("Ending processing thread {}".format(idx))
-    iq.cancel_join_thread()
+    iq.loaders_alive[idx] = 0
+    #  print("Ending processing thread {}".format(idx))
 
 
 class FileQueue(Queue):
@@ -572,6 +575,7 @@ class FileQueue(Queue):
         # Flags for the ImgQueue
         self.mngr = Manager()
         self._kill = self.mngr.Value('b', False)
+        self.loader_alive = self.mngr.Value('b', False)
         self._epoch_count = self.mngr.Value('i', -1)
 
     @property
@@ -592,7 +596,7 @@ class FileQueue(Queue):
     @property
     def filling(self):
         """ Returns true if the file queue is being filled """
-        return self.thread.is_alive()
+        return self.loader_alive.value
 
     @property
     def epoch_size(self):
@@ -673,6 +677,7 @@ class FileQueue(Queue):
             self.max_epochs = max_epochs
             self._epoch_count.value = 0
             self._epoch_size = len(files)
+            self.loader_alive.value = True
             self.started = True
             self.thread.start()
 
@@ -693,7 +698,7 @@ def file_loader(files, fq, shuffle=True):
                 fq.epoch_count += 1
         else:
             time.sleep(FILEQUEUE_SLEEPTIME)
-    fq.cancel_join_thread()
+    fq.loader_alive.value = False
     #  print("File Loader Done")
 
 
@@ -761,7 +766,8 @@ class ImgLoader(Process):
                 img = self._load_image(os.path.join(self.base_dir, f))
                 self.iqueue.put((img, label))
         #  print("Img Loader {} Done".format(self.idx))
-        self.iqueue.cancel_join_thread()
+        #  self.iqueue.loaders_alive[self.idx] = False
+        self.iqueue.loaders_alive[self.idx] = 0
 
 
 def catch_empty(func, handle=lambda e: e, *args, **kwargs):

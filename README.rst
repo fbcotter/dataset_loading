@@ -71,6 +71,9 @@ queue when adding) and where we set the limits on the number of epochs processed
     files = [f for f in files if os.splitext(f)[1] == '.jpeg']
     file_queue = dl.FileQueue()
     file_queue.load_epochs(files, max_epochs=50)
+    ...
+    ...
+    file_queue.join_loaders()
 
 The `load_epochs` method will also start a single thread to manage the queue and
 refill it if it's getting low (shuffling along as it goes).
@@ -84,6 +87,10 @@ alongside the file names in a list of (file, label) tuples. E.g.:
     # list of the files.
     file_queue = dl.FileQueue()
     file_queue.load_epochs(list(zip(files, labels)), max_epochs=float('inf'))
+
+Note that when you are done with the queue, you should call the queue's
+`join_loaders` method, which will make sure the queue is empty and the loader
+thread exits.
 
 The ImageQueue
 ~~~~~~~~~~~~~~
@@ -100,6 +107,9 @@ queue like so:
     # Wait for the image queue to fill up
     sleep(5)
     data, labels = img_queue.get_batch(batch_size=100)
+    ...
+    ...
+    img_queue.join_loaders()
 
 The ImgQueue.start_loaders_ method will start `num_threads` threads, each of
 which read from the file_queue, load from disk and feed into the image queue.
@@ -153,6 +163,10 @@ method. This will add the data as a to your tensorboard file.
     file_writer = tf.summary.FileWriter('./log', tf.get_default_graph())
     # Write period is the sample period in numbers of batches for dumping data
     img_queue.add_logging(file_writer, write_period=10)
+
+Note that when you are done with the queue, you should call the queue's
+`join_loaders` method, which will make sure the queue is empty and the loader
+thread exits.
 
 Small Datasets
 ~~~~~~~~~~~~~~

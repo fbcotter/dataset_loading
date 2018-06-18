@@ -201,19 +201,22 @@ class ImgQueue(Queue):
 
         # Tell the loaders to stop filling the queue
         self._kill.value = True
+        time.sleep(1)
 
-        # Empty the current queue
-        try:
-            while True:
+        # Empty the queue once through - note that the loaders may still fill it
+        # up afterwards, but we want to just stop them blocking trying to put
+        # into a full queue
+        while(True):
+            try:
                 self.get_nowait()
-        except Empty:
-            self.close()
-        except OSError:
-            pass
+            except Empty:
+                break
+            except OSError:
+                break
 
         for l in self.loaders:
             l.join()
-        self.join_thread()
+        #  self.join_thread()
 
     def start_loaders(self, file_queue, num_threads=3, img_dir=None,
                       img_size=None, transform=None):
@@ -525,6 +528,7 @@ def _mini_loader(idx, fq, iq, data, labels, transform):
 
     while not iq.killed:
         # Try get an item
+        #  print('reading fq')
         have_data = False
         try:
             #  item = self.file_queue.get_nowait()
@@ -534,8 +538,12 @@ def _mini_loader(idx, fq, iq, data, labels, transform):
             # If the file queue ran out, exit quietly
             if not fq.filling:
                 break
+        except OSError:
+            # Perhaps the file queue has been shut?
+            break
 
         if have_data:
+            #  print('inserting into iq')
             try:
                 assert not isinstance(item, tuple)
             except AssertionError:
@@ -552,8 +560,9 @@ def _mini_loader(idx, fq, iq, data, labels, transform):
 
             # Put it into my queue.
             iq.put((img, label))
-    iq.loaders_alive[idx] = 0
     #  print("Ending processing thread {}".format(idx))
+    iq.cancel_join_thread()
+    iq.loaders_alive[idx] = 0
 
 
 class FileQueue(Queue):
@@ -565,9 +574,13 @@ class FileQueue(Queue):
 
     Create the class, and then call the load_epochs() method to start a thread
     to manage the queue and refill it as it gets low.
+
+    The maxsize is not provided as an option as we want the queue to be able to
+    take entire epochs and not be restricted on the upper limit by a maxsize.
+    The data should be no problem as the queue entries are only integers.
     """
-    def __init__(self, maxsize=0):
-        Queue.__init__(self, maxsize=maxsize, ctx=get_context())
+    def __init__(self):
+        Queue.__init__(self, maxsize=0, ctx=get_context())
         self._epoch_size = -1
         self.thread = None
         self.started = False
@@ -624,16 +637,8 @@ class FileQueue(Queue):
         """
         # Tell the loaders to stop filling the queue
         self._kill.value = True
-        # Empty the current queue
-        try:
-            while True:
-                self.get_nowait()
-        except Empty:
-            self.close()
-        except OSError:
-            pass
+        time.sleep(1)
         self.thread.join()
-        self.join_thread()
 
     def load_epochs(self, files, shuffle=True, max_epochs=float('inf')):
         """
@@ -687,6 +692,7 @@ def file_loader(files, fq, shuffle=True):
     it gets low.
     """
     while fq.epoch_count < fq.max_epochs and not fq.killed:
+        #  print('Checking fq')
         if fq.qsize() < 0.5*len(files) and fq.epoch_count < fq.max_epochs:
             epochs_to_put = min(
                 EPOCHS_TO_PUT, fq.max_epochs - fq.epoch_count)
@@ -697,8 +703,10 @@ def file_loader(files, fq, shuffle=True):
                 [fq.put(item) for item in files]
                 fq.epoch_count += 1
         else:
+            #  print('Sleeping')
             time.sleep(FILEQUEUE_SLEEPTIME)
     fq.loader_alive.value = False
+    fq.cancel_join_thread()
     #  print("File Loader Done")
 
 
@@ -766,7 +774,7 @@ class ImgLoader(Process):
                 img = self._load_image(os.path.join(self.base_dir, f))
                 self.iqueue.put((img, label))
         #  print("Img Loader {} Done".format(self.idx))
-        #  self.iqueue.loaders_alive[self.idx] = False
+        self.iqueue.cancel_join_thread()
         self.iqueue.loaders_alive[self.idx] = 0
 
 

@@ -67,8 +67,9 @@ queue when adding) and where we set the limits on the number of epochs processed
 .. code:: python
 
     import dataset_loading as dl
-    files = os.listdir(<path_to_images>)
-    files = [f for f in files if os.splitext(f)[1] == '.jpeg']
+    IM_DIR = /path/to/images
+    files = os.listdir(IM_DIR)
+    files = [f for f in files if os.path.splitext(f)[1] == '.jpeg']
     file_queue = dl.FileQueue()
     file_queue.load_epochs(files, max_epochs=50)
     ...
@@ -103,9 +104,9 @@ queue like so:
 .. code:: python
 
     img_queue = dl.ImgQueue(maxsize=1000)
-    img_queue.start_loaders(file_queue, num_threads=3)
+    img_queue.start_loaders(file_queue, num_threads=3, img_dir=IM_DIR)
     # Wait for the image queue to fill up
-    sleep(5)
+    sleep(2)
     data, labels = img_queue.get_batch(batch_size=100)
     ...
     ...

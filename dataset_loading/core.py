@@ -403,20 +403,18 @@ class ImgQueue(Queue):
             try:
                 item = self.get(block=True, timeout=timeout)
             except Empty:
-                # If we have already got some data, then return it
-                if len(data) == 0:
+                time.sleep(FILEQUEUE_BLOCKTIME)
+                if self.loaders_finished:
+                    raise FileQueueDepleted("No more images left")
+                else:
                     # Allow some time for the file queues to definitely finish
                     # before raising an exception
-                    time.sleep(FILEQUEUE_BLOCKTIME)
-                    if self.loaders_finished:
-                        raise FileQueueDepleted("No more images left")
-                    else:
-                        raise ValueError(
-                            'Queue Empty Exception but File Queue is still' +
-                            'active. Maybe the image loaders are under heavy ' +
-                            'load?')
-                else:
-                    break
+                    warnings.warn(
+                        'Queue Empty Exception but File Queue is still' +
+                        'active. Maybe the image loaders are under heavy ' +
+                        'load?')
+                    # Try again this time block indefinitely
+                    item = self.get()
             data.append(item)
         end = time.time()
 

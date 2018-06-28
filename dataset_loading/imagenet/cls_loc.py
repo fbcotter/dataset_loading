@@ -9,12 +9,8 @@ import time
 # Package imports
 from dataset_loading import core, utils
 
-# Cifar folder names
-CIFAR10_FOLDER = 'cifar-10-batches-py'
-CIFAR100_FOLDER = 'cifar-100-python'
 
-
-def load_synsets():
+def load_synsets(data_dir=None):
     """ Loads the synset data for the cls-loc dataset.
 
     Returns
@@ -31,22 +27,50 @@ def load_synsets():
         - wordnet_height
         - num_train_images
     """
+    if data_dir is None:
+        data_dir = os.environ['IMAGENET2017_DIR']
+
     from scipy.io import loadmat
-    x = loadmat(os.path.join(os.path.dirname(__file__), 'meta_clsloc.mat'))
+    x = loadmat(os.path.join(data_dir, 'devkit', 'data', 'meta_clsloc.mat'))
 
     def item_to_dict(item):
         y = {}
         y['ID'] = item[0][0,0]
         y['WNID'] = str(item[1][0])
-        y['words'] = str(item[2][0])
-        y['gloss'] = str(item[3][0])
-        y['num_children'] = item[4][0,0]
-        y['children'] = list(item[5][0])
-        y['wordnet_height'] = item[6][0,0]
-        y['num_train_images'] = item[7][0,0]
+        y['name'] = str(item[2][0])
+        y['description'] = str(item[3][0])
+        y['num_train_images'] = item[4][0,0]
         return y
 
     return [item_to_dict(y) for y in x['synsets'][0]]
+
+
+def get_validation_labels(data_dir=None, omit_blacklist=True):
+    """ Gets the validation labels for the imagenet validation set.
+    Returns the results as (filename, label) """
+    if data_dir is None:
+        data_dir = os.environ['IMAGENET2017_DIR']
+
+    val_dir = os.path.join(data_dir, 'Data', 'CLS-LOC', 'val')
+    files = os.listdir(val_dir)
+    files = [os.path.join(val_dir, f) for f in files]
+    assert len(files) == 50000
+    label_f = 'ILSVRC2015_clsloc_validation_ground_truth.txt'
+    black_f = 'ILSVRC2015_clsloc_validation_blacklist.txt'
+    with open(os.path.join(data_dir, 'devkit', 'data', label_f), 'r') as f:
+        labels = f.readlines()
+    labels = [int(l.strip()) for l in labels]
+
+    data = list(zip(files, labels))
+
+    if omit_blacklist:
+        with open(os.path.join(data_dir, 'devkit', 'data', black_f), 'r') as f:
+            blacklist = f.readlines()
+        blacklist = ['ILSVRC2012_val_{:08d}.JPEG'.format(int(l.strip()))
+                     for l in blacklist]
+        data = [d for d in data if os.path.basename(d[0]) not in blacklist]
+
+    return data
 
 
 def get_clsloc_queues(base_dir, img_size=None, transform=None,

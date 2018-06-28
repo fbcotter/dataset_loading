@@ -177,7 +177,7 @@ def load_cifar_data(data_dir, cifar10=True, val_size=2000, one_hot=True,
 
 
 def get_cifar_queues(data_dir, cifar10=True, val_size=2000, transform=None,
-                     maxsize=1000, num_threads=(2,2,2),
+                     maxsize=10000, num_threads=(2,2,2),
                      max_epochs=float('inf'), get_queues=(True, True, True),
                      one_hot=True, download=False, _rand_data=False):
     """ Get Image queues for CIFAR

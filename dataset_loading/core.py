@@ -147,7 +147,7 @@ class ImgQueue(queue.Queue):
     @property
     def killed(self):
         """ Returns True if the queue has been asked to die. """
-        return self._kill.value
+        return self._kill
 
     @property
     def label_shape(self):
@@ -195,18 +195,15 @@ class ImgQueue(queue.Queue):
 
         # Tell the loaders to stop filling the queue
         self._kill = True
-        time.sleep(1)
 
         # Empty the queue once through - note that the loaders may still fill it
         # up afterwards, but we want to just stop them blocking trying to put
         # into a full queue
-        while(True):
+        while(self.filling):
             try:
                 self.get_nowait()
             except queue.Empty:
-                break
-            except OSError:
-                break
+                time.sleep(0.01)
 
         for l in self.loaders:
             l.join()
@@ -313,7 +310,7 @@ class ImgQueue(queue.Queue):
         self.loaders_alive = [True,] * num_threads
         for i in range(num_threads):
             thread = threading.Thread(
-                target=self._mini_loaders, name='Mini Loader Thread',
+                target=_mini_loader, name='Mini Loader Thread',
                 kwargs={'idx': i,
                         'fq': self.file_queue,
                         'iq': self,
@@ -401,12 +398,10 @@ class ImgQueue(queue.Queue):
                 else:
                     # Allow some time for the file queues to definitely finish
                     # before raising an exception
-                    warnings.warn(
+                    raise ValueError(
                         'Queue Empty Exception but File Queue is still' +
                         'active. Maybe the image loaders are under heavy ' +
                         'load?')
-                    # Try again this time block indefinitely
-                    item = self.get()
             data.append(item)
         end = time.time()
 
@@ -569,8 +564,8 @@ class FileQueue(queue.Queue):
     take entire epochs and not be restricted on the upper limit by a maxsize.
     The data should be no problem as the queue entries are only integers.
     """
-    def __init__(self):
-        queue.Queue.__init__(self, maxsize=0)
+    def __init__(self, maxsize=0):
+        queue.Queue.__init__(self, maxsize=maxsize)
         self._epoch_size = -1
         self.thread = None
         self.started = False
@@ -626,8 +621,16 @@ class FileQueue(queue.Queue):
         stop here.
         """
         # Tell the loaders to stop filling the queue
-        self._kill.value = True
+        self._kill = True
         time.sleep(1)
+
+        # Ensure the file loaders aren't blocking by eating up the remaining
+        # data
+        while(self.loader_alive):
+            try:
+                self.get_nowait()
+            except queue.Empty:
+                time.sleep(0.01)
         self.thread.join()
 
     def load_epochs(self, files, shuffle=True, max_epochs=float('inf')):
@@ -697,7 +700,6 @@ def file_loader(files, fq, shuffle=True):
             time.sleep(FILEQUEUE_SLEEPTIME)
     fq.loader_alive = False
     #  fq.cancel_join_thread()
-    #  print("File Loader Done")
 
 
 class ImgLoader(threading.Thread):

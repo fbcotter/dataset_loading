@@ -176,7 +176,7 @@ class ImgQueue(queue.Queue):
     def loaders_finished(self):
         return self.loaders_started and not self.filling
 
-    def join_loaders(self):
+    def join(self):
         """ Method to signal any threads that are filling this queue to stop.
 
         Threads will clean themselves up if the epoch limit is reached, but in
@@ -188,10 +188,14 @@ class ImgQueue(queue.Queue):
 
         If there is a file queue associated with this image queue, those threads
         will be stopped too.
+
+        Note: Overloads the queue join method which normally blocks until the
+        queue has been emptied. This will return even if the queue has data in
+        it.
         """
         # Kill the file queue
         if self.file_queue is not None:
-            self.file_queue.join_loaders()
+            self.file_queue.join()
 
         # Tell the loaders to stop filling the queue
         self._kill = True
@@ -613,12 +617,16 @@ class FileQueue(queue.Queue):
     def _depleted(self):
         raise FileQueueDepleted('End of Training samples')
 
-    def join_loaders(self):
+    def join(self):
         """ Method to signal any threads that are filling this queue to stop.
 
         Threads will clean themselves up if the epoch limit is reached, but in
         case you want to kill them manually before that, you can signal them to
         stop here.
+
+        Note: Overloads the queue join method which normally blocks until the
+        queue has been emptied. This will return even if the queue has data in
+        it.
         """
         # Tell the loaders to stop filling the queue
         self._kill = True

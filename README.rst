@@ -1,6 +1,11 @@
 Dataset Loading
 ===============
 
+|Build Status|
+
+.. |Build Status| image:: https://travis-ci.org/fbcotter/dataset_loading.png?branch=master
+    :target: https://travis-ci.org/fbcotter/dataset_loading
+
 This repo is aimed at being a centralized resource for loading in commonly used
 image datasets like CIFAR, PASCAL VOC, MNIST, ImageNet and others.
 

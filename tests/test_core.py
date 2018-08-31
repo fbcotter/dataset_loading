@@ -162,7 +162,7 @@ def test_imgqueue_loadersalive():
     sleep(1)
     assert not img_queue.loaders_finished
     assert img_queue.filling
-    img_queue.join_loaders()
+    img_queue.join()
     assert not file_queue.filling
     assert not img_queue.filling
     assert img_queue.loaders_finished

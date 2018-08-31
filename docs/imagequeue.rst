@@ -86,3 +86,41 @@ designing your program:
   Useful to check what the output shape from any preprocessing steps done
   beforehand were.
 - label_shape : Inspects the queue and gets the shape of the labels in it.
+
+A note on the Order of Images coming from the ImgQueue
+------------------------------------------------------
+Note that even if you do not shuffle the samples in the file queue, it is likely
+that the samples in the Image Queue will come out in a different order between
+two runs. This is because of the inherent random nature of multiple feeder
+threads pushing to the Image Queue at different rates. For example, consider the
+below code:
+
+.. code:: python
+
+    from dataset_loading import FileQueue, ImgQueue
+    import os
+
+    # Samples is a directory with about 100 images in it
+    files = os.listdir('samples')
+    files = [os.path.join('samples', f) for f in files]
+
+    # Make the filename the label
+    files = [(f,f) for f in files]
+    fq1 = FileQueue()
+    fq2 = FileQueue()
+    iq1 = ImgQueue()
+    iq2 = ImgQueue()
+    fq1.load_epochs(files, shuffle=False)
+    fq2.load_epochs(files, shuffle=False)
+    iq1.start_loaders(fq1)
+    iq2.start_loaders(fq2)
+    data1, labels1 = iq1.get_batch(10)
+    data2, labels2 = iq2.get_batch(10)
+
+    # Print out the two, they will likely be different
+    print('List 1:\n{}'.format('\n'.join(labels1)))
+    print('List 2:\n{}'.format('\n'.join(labels2)))
+
+If you really want the images to come out in the same order on subsequent runs,
+you'll need to restrict the number of loader threads to 1. I.e. replace
+:code:`iq.start_loaders(fq)` with :code:`iq.start_loaders(fq, num_threads=1)`.
